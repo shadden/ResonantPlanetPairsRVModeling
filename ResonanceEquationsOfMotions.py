@@ -3,12 +3,8 @@ import numpy as np
 import theano
 import theano.tensor as T
 from exoplanet.theano_ops.kepler import KeplerOp
-import matplotlib.pyplot as plt
-from celmech.disturbing_function import get_fg_coeffs
-from IntegrableModelUtils import getOmegaMatrix, calc_DisturbingFunction_with_sinf_cosf
-from IntegrableModelUtils import get_secular_f2_and_f10
-from scipy.optimize import root_scalar,root
 from warnings import warn
+from ResonantRV_Utils import calc_DisturbingFunction_with_sinf_cosf,getOmegaMatrix
 DEBUG = False
 
 def cart_vars_to_a1e1s1_a2e2s2(cart_vars,gamma,j,k):
@@ -89,17 +85,17 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         mu2 = m2 / (Mstar + m2)
         eps = m1 * mu2 / (mu1 + mu2) / Mstar
         beta1 = mu1 / (mu1+mu2)
-        beta2 = mu2 / (mu2+mu2)
+        beta2 = mu2 / (mu1+mu2)
         gamma = mu2/mu1
         
-        # Resonant semi-major axis ratio
-        alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
-        
+        # Angle variable for averaging over
+        Q = T.dvector('Q')
+
         # Dynamical variables:
         dyvars = T.vector()
         sigma1, sigma2, I1, I2, amd = [dyvars[i] for i in range(5)]
-        
-        
+
+
         # Quadrature weights
         quad_weights = T.dvector('w')
         
@@ -113,6 +109,8 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         Gamma1 = I1
         Gamma2 = I2
         
+        # Resonant semi-major axis ratio
+        alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
         P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
         P = P0 - (s+1/2) * amd
         
@@ -182,8 +180,8 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         nodes = nodes * np.pi
         weights = weights * 0.5
         
-       # 'givens' will fix some parameters of Theano functions compiled below
-       givens = [(Q,nodes),(quad_weights,weights)]
+        # 'givens' will fix some parameters of Theano functions compiled below
+        givens = [(Q,nodes),(quad_weights,weights)]
 
         # 'ins' will set the inputs of Theano functions compiled below
         #   Note: 'extra_ins' will be passed as values of object attributes
@@ -197,14 +195,18 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         #  Conservative flow
         gradHtot = T.grad(Htot,wrt=dyvars)
         hessHtot = theano.gradient.hessian(Htot,wrt=dyvars)
-        Jtens = T.as_tensor(np.pad(getJmatrix(2),(0,1),'constant'))
+        Jtens = T.as_tensor(np.pad(getOmegaMatrix(2),(0,1),'constant'))
         H_flow_vec = Jtens.dot(gradHtot)
         H_flow_jac = Jtens.dot(hessHtot)
         
         #  Dissipative flow
         dis_flow_vec = T.stack(sigma1dot_dis,sigma2dot_dis,I1dot_dis,I2dot_dis,amddot_dis)
         dis_flow_jac = theano.gradient.jacobian(dis_flow_vec,dyvars)
-
+        
+        
+        # Extras
+        dis_timescales = [tau_a1_0,tau_a2_0,tau_e1,tau_e2]
+        orbels = [a1,e1,sigma1*k,a2,e2,sigma2*k]
         ##########################
         # Compile Theano functions
         ##########################
@@ -214,24 +216,29 @@ def get_compiled_theano_functions(N_QUAD_PTS):
             #  so I've put a debugging switch here 
             #  to skip evaluating these functions when
             #  desired.
-
+            Rav_fn = theano.function(
+                inputs=ins,
+                outputs=Rav,
+                givens=givens,
+                on_unused_input='ignore'
+            )
             Htot_fn = theano.function(
                 inputs=ins,
-                outputs=H_tot,
+                outputs=Htot,
                 givens=givens,
                 on_unused_input='ignore'
             )
             
             H_flow_vec_fn = theano.function(
                 inputs=ins,
-                outputs=H_tot,
+                outputs=H_flow_vec,
                 givens=givens,
                 on_unused_input='ignore'
             )
             
             H_flow_jac_fn = theano.function(
                 inputs=ins,
-                outputs=H_tot,
+                outputs=H_flow_jac,
                 givens=givens,
                 on_unused_input='ignore'
             )
@@ -249,16 +256,25 @@ def get_compiled_theano_functions(N_QUAD_PTS):
                 givens=givens,
                 on_unused_input='ignore'
             )
-            dis_timescales_fn =function(
-                inputs=ins,
-                outputs=dis_flow_jac,
+
+            dis_timescales_fn =theano.function(
+                inputs=extra_ins,
+                outputs=dis_timescales,
                 givens=givens,
                 on_unused_input='ignore'
             )
+
+            orbels_fn = theano.function(
+                inputs=ins,
+                outputs=orbels,
+                givens=givens,
+                on_unused_input='ignore'
+            )
+
         else:
-            Htot_fn,H_flow_fn,H_flow_jac_fn,dis_flow_vec_fn,dis_flow_jac_fn,dis_timescales_fn = [lambda x: x for x range(6)]
+            return  [lambda x: x for _ in range(8)]
         
-        return Htot_fn,H_flow_fn,H_flow_jac_fn,dis_flow_vec_fn,dis_flow_jac_fn,dis_timescales_fn
+        return Rav_fn,Htot_fn,H_flow_vec_fn,H_flow_jac_fn,dis_flow_vec_fn,dis_flow_jac_fn,dis_timescales_fn,orbels_fn
         
 
 class ResonanceEquations():
@@ -298,9 +314,9 @@ class ResonanceEquations():
         self.K2 = K2
         self.tau_alpha = tau_alpha
         self.p = p 
-        funcs = get_compiled_theano_functions(N_QUAD_PTS)
+        funcs = get_compiled_theano_functions(n_quad_pts)
 
-        self._H,self._H_flow,self._H_jac,self._dis_flow,self._dis_jac,self._times_scales = funcs
+        self._Rav_fn,self._H,self._H_flow,self._H_jac,self._dis_flow,self._dis_jac,self._times_scales,self._orbels_fn = funcs
     
     @property
     def extra_args(self):
@@ -308,11 +324,11 @@ class ResonanceEquations():
 
     @property
     def mu1(self):
-        self.m1 / (1 + self.m1)
+        return self.m1 / (1 + self.m1)
 
     @property
     def mu2(self):
-        self.m2 / (1 + self.m2)
+        return self.m2 / (1 + self.m2)
 
     @property
     def beta1(self):
@@ -329,6 +345,22 @@ class ResonanceEquations():
     @property
     def alpha(self):
         return ((self.j - self.k) / self.j)**(2/3)
+
+    def Rav(self,z):
+        """
+        Calculate the value of the averaged disturbing function
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        float : 
+            The value of the Hamiltonian evaluated at z.
+        """
+        return self._Rav_fn(z,*self.extra_args)
 
     def H(self,z):
         """
@@ -419,7 +451,7 @@ class ResonanceEquations():
         """
         return self._dis_jac(z,*self.extra_args)
 
-    def flow(self,z)
+    def flow(self,z):
         """
         Calculate flow 
         .. math:
@@ -437,11 +469,11 @@ class ResonanceEquations():
         """
         return self._H_flow(z,*self.extra_args) + self._dis_flow(z,*self.extra_args)
 
-    def flow_jac(self,z)
+    def flow_jac(self,z):
         """
         Calculate flow Jacobian
         .. math:
-            \Omega \cdot \Delta H(z) + \nabla f_{dis}(z)
+            \Omega \cdot \Delta H(z) + \\nabla f_{dis}(z)
 
         Arguments
         ---------
@@ -456,36 +488,34 @@ class ResonanceEquations():
         return self._H_jac(z,*self.extra_args) + self._dis_jac(z,*self.extra_args)
 
     def dyvars_to_orbels(self,z):
-        """
+        r"""
         Convert dynamical variables
         .. math:
             z = (\sigma_1,\sigma_2,I_1,I_2,{\cal C}
         to orbital elements
         .. math:
-            (a_1,e_1,\theta_1,a_2,e_2,\theta_2)
+            (a_1,e_1,\\theta_1,a_2,e_2,\\theta_2)
         """
-        sigma1,sigma2,I1,I2,amd = z
-        a1,e1,a2,e2 = I1I2_to_a1e1_a2e2(I1,I2,amd,self.m2 /self.m1 ,self.j,self.k)
-        return np.array((a1,e1,sigma1 * self.k, a2, e2, sigma2 * self.k))
+        return self._orbels_fn(z,*self.extra_args)
 
     def orbels_to_dyvars(self,orbels):
-        """
-        Convert dynamical variables
-        .. math:
-            z = (\sigma_1,\sigma_2,I_1,I_2,{\cal C}
-        to orbital elements
+        r"""
+        Convert orbital elements
         .. math:
             (a_1,e_1,\theta_1,a_2,e_2,\theta_2)
+        to dynamical variables
+        .. math:
+            z = (\sigma_1,\sigma_2,I_1,I_2,{\cal C}
         """
-       # Total angular momentum constrained by
-       # Ltot = beta1 * sqrt(alpha_res) + beta2 - amd
-       a1,e1,theta1,a2,e2,theta2 = orbels
-       sigma1 = theta1 / self.k
-       sigma2 = theta2 / self.k
-       I1 = self.beta1 * np.sqrt(a1/a2) * (1 - np.sqrt(1 - e1*e1) ) 
-       I2 = self.beta2 * (1 - np.sqrt(1 - e2*e2) ) 
-       s = (self.j - self.k) / self.k
-       P0 = ( beta2 - beta1 * np.sqrt( self.alpha ) ) / 2
-       P = 0.5 * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * (I1+I2)
-       amd = (P0 - P) / (s + 0.5)
-       return np.array((sigma1,sigma2,I1,I2,amd))
+        # Total angular momentum constrained by
+        # Ltot = beta1 * sqrt(alpha_res) + beta2 - amd
+        a1,e1,theta1,a2,e2,theta2 = orbels
+        sigma1 = theta1 / self.k
+        sigma2 = theta2 / self.k
+        I1 = self.beta1 * np.sqrt(a1/a2) * (1 - np.sqrt(1 - e1*e1) ) 
+        I2 = self.beta2 * (1 - np.sqrt(1 - e2*e2) ) 
+        s = (self.j - self.k) / self.k
+        P0 = ( self.beta2 - self.beta1 * np.sqrt( self.alpha ) ) / 2
+        P = 0.5 * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * (I1+I2)
+        amd = (P0 - P) / (s + 0.5)
+        return np.array((sigma1,sigma2,I1,I2,amd))
