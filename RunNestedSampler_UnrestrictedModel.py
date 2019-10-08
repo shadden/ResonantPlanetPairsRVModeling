@@ -20,7 +20,6 @@ datadir = DATA+dname
 with open(datadir+"/full_model_post.pkl","rb") as fi:
     posterior_samples = pickle.load(fi)
 
-
 # Add some additional columns to the posterior file
 posterior_samples.columns
 for i in range(1,3):
@@ -68,117 +67,119 @@ for par in like.list_vary_params():
     else:
         like.params[par].value = posterior_samples[par].median()
 
-# Set min and max
-from collections import OrderedDict
-maxdict=OrderedDict({col:np.inf for col in like.list_vary_params()})
-mindict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
-meddict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
-for col in like.list_vary_params():
-    x = posterior_samples[col]
-    xmin,xmed,xmax = x.min(),x.median(),x.max()
-    maxdict[col] = xmed + 2 * (xmax-xmed)
-    mindict[col] = xmed + 2 * (xmin-xmed)
-    if mindict[col] < 0:
-        mindict[col] = 1e-4 * xmed
-    meddict[col] = xmed
-for inst in instruments:
-    inst_obs = Observations.query('instrument==@inst')
-    gammastr="gamma{}".format(inst)
-    jitstr="jit{}".format(inst)
-    mindict[jitstr] = 1e-3 * inst_obs['uncertainty'].median()
-    maxdict[jitstr] = 30   * inst_obs['uncertainty'].median()
-    mindict[gammastr] = inst_obs['velocity'].min()
-    maxdict[gammastr] = inst_obs['velocity'].max()
-
-# Define prior transform function
-def prior_transform(u,mindict,meddict,maxdict,suffixes):
-    ####################
-    ### first planet ###
-    ####################
-    i=0
-    per1 = mindict['per1'] * (1-u[i]) + maxdict['per1'] * u[i]  # within range p1min to p2max
-
-    i+=1
-    tc1 = meddict['tc1'] + (u[i]-0.5) * per1
-
-    i+=1
-    e1 = u[i] # eccentricity from 0 to 1
-
-    i+=1
-    w1 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
-
-    i+=1
-    logk1_min = np.log(mindict['k1'])
-    logk1_max = np.log(maxdict['k1'])
-    logk1 = logk1_min * (1-u[i]) + logk1_max * u[i] # K log-uniform between Kmin and Kmax
-    k1 = np.exp(logk1)
-
-    #####################
-    ### second planet ###
-    #####################
-    i+=1
-    per2 = mindict['per2']  * (1-u[i]) + maxdict['per2'] * u[i] # within range p2min to p2max
-
-    i+=1
-    tc2 = meddict['tc2'] + (u[i]-0.5) * per2
-
-    i+=1
-    e2 = u[i] # eccentricity from 0 to 1
-
-    i+=1
-    w2 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
-
-    i+=1
-    logk2_min = np.log(mindict['k2'])
-    logk2_max = np.log(maxdict['k2'])
-    logk2 = logk2_min * (1-u[i]) + logk2_max * u[i] # K log-uniform between Kmin and Kmax
-    k2 = np.exp(logk2)
-
-    #########################
-    ### instrument params ###
-    #########################
-
-    Ninst = len(np.atleast_1d(suffixes))
-    gamma = np.zeros(Ninst)
-    jit = np.zeros(Ninst)
-
-    for k,sfx in enumerate(np.atleast_1d(suffixes)):
-
+radvel.maxlike_fitting(like)
+if False:
+    # Set min and max
+    from collections import OrderedDict
+    maxdict=OrderedDict({col:np.inf for col in like.list_vary_params()})
+    mindict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
+    meddict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
+    for col in like.list_vary_params():
+        x = posterior_samples[col]
+        xmin,xmed,xmax = x.min(),x.median(),x.max()
+        maxdict[col] = xmed + 2 * (xmax-xmed)
+        mindict[col] = xmed + 2 * (xmin-xmed)
+        if mindict[col] < 0:
+            mindict[col] = 1e-4 * xmed
+        meddict[col] = xmed
+    for inst in instruments:
+        inst_obs = Observations.query('instrument==@inst')
+        gammastr="gamma{}".format(inst)
+        jitstr="jit{}".format(inst)
+        mindict[jitstr] = 1e-3 * inst_obs['uncertainty'].median()
+        maxdict[jitstr] = 30   * inst_obs['uncertainty'].median()
+        mindict[gammastr] = inst_obs['velocity'].min()
+        maxdict[gammastr] = inst_obs['velocity'].max()
+    
+    # Define prior transform function
+    def prior_transform(u,mindict,meddict,maxdict,suffixes):
+        ####################
+        ### first planet ###
+        ####################
+        i=0
+        per1 = mindict['per1'] * (1-u[i]) + maxdict['per1'] * u[i]  # within range p1min to p2max
+    
         i+=1
-        gamma[k] =  mindict['gamma{}'.format(sfx)] * (1-u[i]) + maxdict['gamma{}'.format(sfx)] * u[i]
-
+        tc1 = meddict['tc1'] + (u[i]-0.5) * per1
+    
         i+=1
-        logjit_min = np.log(mindict['jit{}'.format(sfx)])
-        logjit_max = np.log(maxdict['jit{}'.format(sfx)])
-        logjit = logjit_min * (1-u[i]) + logjit_max * u[i]
-        jit[k] = np.exp(logjit)
-
-    return np.append(
-        np.array([per1,tc1,e1,w1,k1,per2,tc2,e2,w2,k2]),
-        np.vstack((gamma,jit)).T.reshape(-1)
+        e1 = u[i] # eccentricity from 0 to 1
+    
+        i+=1
+        w1 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
+    
+        i+=1
+        logk1_min = np.log(mindict['k1'])
+        logk1_max = np.log(maxdict['k1'])
+        logk1 = logk1_min * (1-u[i]) + logk1_max * u[i] # K log-uniform between Kmin and Kmax
+        k1 = np.exp(logk1)
+    
+        #####################
+        ### second planet ###
+        #####################
+        i+=1
+        per2 = mindict['per2']  * (1-u[i]) + maxdict['per2'] * u[i] # within range p2min to p2max
+    
+        i+=1
+        tc2 = meddict['tc2'] + (u[i]-0.5) * per2
+    
+        i+=1
+        e2 = u[i] # eccentricity from 0 to 1
+    
+        i+=1
+        w2 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
+    
+        i+=1
+        logk2_min = np.log(mindict['k2'])
+        logk2_max = np.log(maxdict['k2'])
+        logk2 = logk2_min * (1-u[i]) + logk2_max * u[i] # K log-uniform between Kmin and Kmax
+        k2 = np.exp(logk2)
+    
+        #########################
+        ### instrument params ###
+        #########################
+    
+        Ninst = len(np.atleast_1d(suffixes))
+        gamma = np.zeros(Ninst)
+        jit = np.zeros(Ninst)
+    
+        for k,sfx in enumerate(np.atleast_1d(suffixes)):
+    
+            i+=1
+            gamma[k] =  mindict['gamma{}'.format(sfx)] * (1-u[i]) + maxdict['gamma{}'.format(sfx)] * u[i]
+    
+            i+=1
+            logjit_min = np.log(mindict['jit{}'.format(sfx)])
+            logjit_max = np.log(maxdict['jit{}'.format(sfx)])
+            logjit = logjit_min * (1-u[i]) + logjit_max * u[i]
+            jit[k] = np.exp(logjit)
+    
+        return np.append(
+            np.array([per1,tc1,e1,w1,k1,per2,tc2,e2,w2,k2]),
+            np.vstack((gamma,jit)).T.reshape(-1)
+        )
+    
+    ######################
+    ### Set up sampler ###
+    ######################
+    def pt(u):
+        return prior_transform(u,mindict,meddict,maxdict,suffixes)
+    Npars = len(like.list_vary_params())
+    suffixes = like.suffixes
+    modpars = [like.list_vary_params().index('w1'),like.list_vary_params().index('w2')]
+    
+    sampler_full_model = dynesty.NestedSampler(
+        like.logprob_array,
+        pt,
+        Npars,
+        periodic=modpars,
+        sample='rwalk'
     )
-
-######################
-### Set up sampler ###
-######################
-def pt(u):
-    return prior_transform(u,mindict,meddict,maxdict,suffixes)
-Npars = len(like.list_vary_params())
-suffixes = like.suffixes
-modpars = [like.list_vary_params().index('w1'),like.list_vary_params().index('w2')]
-
-sampler_full_model = dynesty.NestedSampler(
-    like.logprob_array,
-    pt,
-    Npars,
-    periodic=modpars,
-    sample='rwalk'
-)
-
-####################
-### run  sampler ###
-####################
-full_model_results = sampler_full_model.run_nested()
-full_model_results=sampler_full_model.results
-with open(datadir+"/full_model_nested_sampling_results_v1.0.pkl","wb") as fi:
-    pickle.dump(full_model_results,fi)
+    
+    ####################
+    ### run  sampler ###
+    ####################
+    full_model_results = sampler_full_model.run_nested()
+    full_model_results=sampler_full_model.results
+    with open(datadir+"/full_model_nested_sampling_results_v1.0.pkl","wb") as fi:
+        pickle.dump(full_model_results,fi)
