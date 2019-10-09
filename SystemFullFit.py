@@ -10,6 +10,9 @@ from ResonantRV_Utils import get_acr_like, get_full_like,add_telescope_jitter_pr
 from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
 from ResonantPairModel import RadvelModelPriorTransform
 
+# Fit ACR model for second-order resonance? 
+do_second_order = True
+
 DATADIR = "./saves/"
 AllObservations = pd.read_pickle("./data/All_Observations.pkl")
 
@@ -126,37 +129,18 @@ period_ratio = full_model_mcmc_results['per2'] / full_model_mcmc_results['per1']
 period_ratio = period_ratio.median()
 j_first_order = np.int(np.round(1+1/(period_ratio-1)))
 
-# Determine nearest second order resonance
-j_second_order = np.int(np.round(2+2/(period_ratio-1)))
-# Check if nearest second order is a 'proper' second order resonance
-if j_second_order%2==0:
-    jplus = j_second_order + 1
-    jminus = j_second_order - 1
-    delta_plus = np.abs( period_ratio * (jplus - 2 ) / jplus - 1 )
-    delta_minus = np.abs(period_ratio * (jminus - 2 ) / jminus - 1)
-    if delta_plus < delta_minus:
-        j_second_order = jplus
-    else:
-        j_second_order = jminus
 
 # Set up ACR likelihoods
 first_order_acr_model_like = get_acr_like(Observations,j_first_order,1)
-# second_order_acr_model_like = get_acr_like(Observations,j_second_order,2)
-
 for key,par in first_order_acr_model_like.params.items():
     if key in full_model_like.params.keys():
         par.value = full_model_like.params[key].value
 
-#for key,par in second_order_acr_model_like.params.items():
-#    if key in full_model_like.params.keys():
-#        par.value = full_model_like.params[key].value
-
-
-### Do nested sampling *first* ###
+### Nested sampling ###
 
 # define prior transforms
 first_order_acr_model_prior_transform = ACRModelPriorTransform(Observations,first_order_acr_model_like)
-# second_order_acr_model_prior_transform = ACRModelPriorTransform(Observations,second_order_acr_model_like)
+
 
 ### First-order res ###
 sampler_first_order_acr_model = dynesty.NestedSampler(
@@ -232,3 +216,96 @@ except FileNotFoundError:
     print("Running ACR model MCMC fit...")
     first_order_acr_model_mcmc_results = radvel.mcmc(first_order_acr_model_post)
     first_order_acr_model_mcmc_results.to_pickle(filestring)
+
+if do_second_order:
+
+    j_second_order = np.int(np.round(2+2/(period_ratio-1)))
+    # Check if nearest second order is a 'proper' second order resonance
+    if j_second_order%2==0:
+        jplus = j_second_order + 1
+        jminus = j_second_order - 1
+        delta_plus = np.abs( period_ratio * (jplus - 2 ) / jplus - 1 )
+        delta_minus = np.abs(period_ratio * (jminus - 2 ) / jminus - 1)
+        if delta_plus < delta_minus:
+            j_second_order = jplus
+        else:
+            j_second_order = jminus
+
+    second_order_acr_model_like = get_acr_like(Observations,j_second_order,2)
+    for key,par in second_order_acr_model_like.params.items():
+        if key in full_model_like.params.keys():
+            par.value = full_model_like.params[key].value
+
+    second_order_acr_model_prior_transform = ACRModelPriorTransform(Observations,second_order_acr_model_like)
+    sampler_second_order_acr_model = dynesty.NestedSampler(
+        second_order_acr_model_like.logprob_array,
+        second_order_acr_model_prior_transform,
+        second_order_acr_model_prior_transform.Npars,
+        sample='rwalk'
+    )
+    
+    best_logz = -np.inf
+    best_angle_n = -1
+    print("Running ACR nested sampling fits for second-order resonance...")
+    for angle_n in range(j_second_order):
+        print("\t angle_n {} of {}".format(angle_n,j_second_order))
+        # Reset sampler, change angle_n parameter
+        sampler_second_order_acr_model.reset()
+        second_order_acr_model_like.params['angle_n'].value = angle_n
+        
+        # Run sampler, save results.
+        filestring = acr_model_nested_sampling_results_file_string.format(j_second_order,j_second_order - 2, angle_n)
+        try:
+            with open(filestring,"rb") as fi:
+                acr_model_nested_results = pickle.load(fi)
+            print("Nested sampling results read from saved file.")
+    
+        except FileNotFoundError:
+            print("No nested sampling save file found.")
+            print("Running full model nested sampling fit...")
+            sampler_second_order_acr_model.run_nested()
+            acr_model_nested_results = sampler_second_order_acr_model.results
+            with open(filestring,"wb") as fi:
+                pickle.dump(acr_model_nested_results,fi)
+        
+        # Test logz to see if it is the new maximum.
+        logz = acr_model_nested_results['logz'][-1]
+        print("logz={:.1f} for angle_n={}".format(logz,angle_n),end=' ')
+        if logz > best_logz:
+            best_logz = logz
+            best_angle_n = angle_n
+    
+            # Save best parameters to use as initialization point of MCMC
+            imax = np.argmax(acr_model_nested_results.logl)
+            second_order_acr_model_best_pars = acr_model_nested_results.samples[imax]
+            print("(New best)")
+        else:
+            print("")
+    
+    #  MCMC
+    # Set priors
+    second_order_acr_model_like.params['angle_n'].value = best_angle_n
+    second_order_acr_model_post = radvel.posterior.Posterior(second_order_acr_model_like)
+    acrpriors = [
+        ACRModelPrior(),
+        radvel.prior.Jeffreys('k1',0.2 * k1best, 5 * k1best ),
+        radvel.prior.Jeffreys('m2_by_m1',0.1,10)
+    ]
+    second_order_acr_model_post.priors += acrpriors
+    add_telescope_jitter_priors(second_order_acr_model_post)
+    second_order_acr_model_post.set_vary_params(second_order_acr_model_best_pars)
+    
+    # Re-determine max-likelihood
+    print("Finding ACR model  max-likelihood...")
+    print("Before fit: logprob: {:.2f}, loglike: {:.2f}".format(second_order_acr_model_post.logprob(),second_order_acr_model_like.logprob()))
+    minresult = minimize(second_order_acr_model_post.neglogprob_array,second_order_acr_model_post.get_vary_params())
+    print("After fit: logprob: {:.2f}, loglike: {:.2f}".format(second_order_acr_model_post.logprob(),second_order_acr_model_like.logprob()))
+    
+    filestring = acr_model_mcmc_posterior_file.format(j_second_order,j_second_order-2,best_angle_n)
+    try:
+        second_order_acr_model_mcmc_results = pd.read_pickle(filestring)
+        print("MCMC results read from saved file.")
+    except FileNotFoundError:
+        print("No MCMC save file found.")
+        print("Running ACR model MCMC fit...")
+        second_order_acr_model_mcmc_results = radvel.mcmc(second_order_acr_model_post)
