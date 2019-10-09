@@ -6,18 +6,16 @@ import sys
 import re
 import dynesty
 import os
-
-DATADIR = "./saves/"
-sys.path+= ["../"]
-
 from ResonantRV_Utils import get_acr_like, get_full_like
 from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
 from ResonantPairModel import RadvelModelPriorTransform
 
+DATADIR = "./saves/"
+AllObservations = pd.read_pickle("./data/All_Observations.pkl")
 
 # Read in observations
-AllObservations = pd.read_pickle("./data/All_Observations.pkl")
-system='HD 116029'
+I = int(sys.argv[1])
+system = AllObservations.system.unique()[I]
 Observations = AllObservations.query('system==@system')
 
 
