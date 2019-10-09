@@ -193,14 +193,13 @@ for angle_n in range(j_first_order):
     
     # Test logz to see if it is the new maximum.
     logz = acr_model_nested_results['logz'][-1]
-    print("\n logz={:.1f} for angle_n={}".format(logz,angle_n),end=' ')
+    print("logz={:.1f} for angle_n={}".format(logz,angle_n),end=' ')
     if logz > best_logz:
         best_logz = logz
         best_angle_n = angle_n
         print(" (New best)")
     else:
         print("")
-
 
 #  MCMC
 # Set priors
@@ -218,7 +217,12 @@ print("Before fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_mode
 minresult = minimize(first_order_acr_model_post.neglogprob_array,first_order_acr_model_post.get_vary_params())
 print("After fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_model_post.logprob(),first_order_acr_model_like.logprob()))
 
-print("Running first-order ACR model MCMC fit")
-first_order_acr_model_mcmc_results = radvel.mcmc(first_order_acr_model_post)
 filestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,angle_n)
-first_order_acr_model_mcmc_results.to_pickle(filestring)
+try:
+    first_order_acr_model_mcmc_results = pd.read_pickle(filestring)
+    print("MCMC results read from saved file.")
+except FileNotFoundError:
+    print("No MCMC save file found.")
+    print("Running ACR model MCMC fit...")
+    first_order_acr_model_mcmc_results = radvel.mcmc(first_order_acr_model_post)
+    first_order_acr_model_mcmc_results.to_pickle(filestring)
