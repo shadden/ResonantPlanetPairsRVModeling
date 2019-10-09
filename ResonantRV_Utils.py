@@ -6,13 +6,15 @@ import pandas as pd
 import pickle
 import rebound as rb
 import matplotlib.pyplot as plt
-
+import os
+_here = os.path.dirname(os.path.abspath(__file__))
+ACR_DATA_FILE_PATH = _here +"/ACR_locations_data.pkl" 
 class acr_function():
     """
     Class for computing planet eccentricities
     for different ACR configurations.
     """
-    def __init__(self,res_j,res_k,ACR_data_file="./ACR_locations_data.pkl"):
+    def __init__(self,res_j,res_k,ACR_data_file=ACR_DATA_FILE_PATH):
         """
         Parameters
         ----------
@@ -51,7 +53,7 @@ class acr_function():
         """
         return self.e1_rbs(gamma,t)[0,0],self.e2_rbs(gamma,t)[0,0]
 
-def get_acr_like(observations_df,j,k):
+def get_acr_like(observations_df,j,k,ACR_data_file=ACR_DATA_FILE_PATH):
     """
     Get a radvel likelihood object for an ACR radial velocity model.
     
@@ -61,16 +63,21 @@ def get_acr_like(observations_df,j,k):
         Dataframe containing the radial observations.
         Required columns:
             'instrument','time','velocity','uncertainty'
+
     j : int
         Speficies the j:j-k resonance for the ACR model
+
     k : int
         Order of resonance for ACR model.
+
+    ACR_data_file : str
+        File string designating file containing ACR data.
 
     Returns
     -------
     radvel CompositeLikelihood
     """
-    acrfn = acr_function(j,k)
+    acrfn = acr_function(j,k,ACR_data_file=ACR_data_file)
     mdl = ACRModel(j,k , acrfn, time_base=observations_df.time.median())
     likes=[]
     instruments = observations_df.instrument.unique()
@@ -87,7 +94,7 @@ def get_acr_like(observations_df,j,k):
     like.params['curv'].vary = False
     return like
 
-def get_radvel_like(observations_df):
+def get_full_like(observations_df):
     """
     Get a radvel likelihood object for a two-planet radial velocity model.
     
