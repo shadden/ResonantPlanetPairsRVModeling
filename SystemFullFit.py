@@ -6,7 +6,7 @@ import sys
 import re
 import dynesty
 import os
-from ResonantRV_Utils import get_acr_like, get_full_like
+from ResonantRV_Utils import get_acr_like, get_full_like,add_telescope_jitter_priors
 from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
 from ResonantPairModel import RadvelModelPriorTransform
 
@@ -75,6 +75,7 @@ full_model_priors = [
     radvel.prior.EccentricityPrior(2)
 ]
 full_model_post.priors += full_model_priors
+add_telescope_jitter_priors(full_model_post)
 
 # Re-determine max-likelihood
 from scipy.optimize import minimize
@@ -195,7 +196,11 @@ for angle_n in range(j_first_order):
     if logz > best_logz:
         best_logz = logz
         best_angle_n = angle_n
-        print(" (New best)")
+
+        # Save best parameters to use as initialization point of MCMC
+        imax = np.argmax(acr_model_nested_results.logl)
+        first_order_acr_model_best_pars = acr_model_nested_results.samples[imax]
+        print("(New best)")
     else:
         print("")
 
@@ -209,17 +214,16 @@ acrpriors = [
     radvel.prior.Jeffreys('m2_by_m1',0.1,10)
 ]
 first_order_acr_model_post.priors += acrpriors
+add_telescope_jitter_priors(first_order_acr_model_post)
+first_order_acr_model_post.set_vary_params(first_order_acr_model_best_pars)
+
 # Re-determine max-likelihood
 print("Finding ACR model  max-likelihood...")
 print("Before fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_model_post.logprob(),first_order_acr_model_like.logprob()))
 minresult = minimize(first_order_acr_model_post.neglogprob_array,first_order_acr_model_post.get_vary_params())
 print("After fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_model_post.logprob(),first_order_acr_model_like.logprob()))
 
-# fix my mistake...
-filestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,angle_n)
-newfilestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,best_angle_n)
-os.rename(filestring,newfilestring)
-filestring = newfilestring
+filestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,best_angle_n)
 try:
     first_order_acr_model_mcmc_results = pd.read_pickle(filestring)
     print("MCMC results read from saved file.")

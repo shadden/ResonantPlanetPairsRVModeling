@@ -172,6 +172,36 @@ def synthpars_to_sim(spars,t0=0,Mstar = 1,DataInMetersPerSecond=False):
     sim.move_to_com()
     return sim
 
+def add_telescope_jitter_priors(post,low=1e-3,high=30):
+    """
+    Add logarithmic priors on instrumental jitter term to a radvel
+    posterior object.
+
+    Arguments
+    ---------
+    post : radvel.posterior.Posterior 
+        Object for which to add priors
+    low : float, optional
+        Prior lower limit set to low * med(unc) where
+        med(unc) is the median uncertainty of the instrument's 
+        measurments. Default is 1e-3
+    high : float, optional
+        Prior upper limit set to high * med(unc) where
+        med(unc) is the median uncertainty of the instrument's 
+        measurments. Default is 30
+    """
+    telvec = post.likelihood.telvec
+    unc = post.likelihood.yerr
+    jitpriors = []
+    for inst in set(telvec):
+        msk = telvec == inst
+        med_unc = np.median(unc[msk])
+        jit_lo = low * med_unc
+        jit_hi = high * med_unc
+        parstring = "jit{}".format(inst)
+        prior = radvel.prior.Jeffreys(parstring,jit_lo,jit_hi)
+        jitpriors.append(prior)
+    post.priors += jitpriors
 def plot_fit(like,ax=None,Npt = 200):
 
     if ax is None:
