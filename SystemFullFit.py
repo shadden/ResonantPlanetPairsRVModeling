@@ -215,7 +215,11 @@ print("Before fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_mode
 minresult = minimize(first_order_acr_model_post.neglogprob_array,first_order_acr_model_post.get_vary_params())
 print("After fit: logprob: {:.2f}, loglike: {:.2f}".format(first_order_acr_model_post.logprob(),first_order_acr_model_like.logprob()))
 
+# fix my mistake...
 filestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,angle_n)
+newfilestring = acr_model_mcmc_posterior_file.format(j_first_order,j_first_order-1,best_angle_n)
+os.rename(filestring,newfilestring)
+filestring = newfilestring
 try:
     first_order_acr_model_mcmc_results = pd.read_pickle(filestring)
     print("MCMC results read from saved file.")
