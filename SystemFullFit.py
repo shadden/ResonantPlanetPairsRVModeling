@@ -309,3 +309,4 @@ if do_second_order:
         print("No MCMC save file found.")
         print("Running ACR model MCMC fit...")
         second_order_acr_model_mcmc_results = radvel.mcmc(second_order_acr_model_post)
+        second_order_acr_model_mcmc_results.to_pickle(filestring)
