@@ -2,6 +2,7 @@ import numpy as np
 import rebound as rb
 import sys
 from ResonantRV_Utils import acr_function
+
 if __name__=="__main__":
     res_j = int(sys.argv[1])
     res_k = int(sys.argv[2])
@@ -41,7 +42,7 @@ def getsim(Delta,t,m1,m2):
 
 def run_megno_sim(par):
     Delta,t = par
-    sim = getsim(Delta,t,1e-4,1e-4)
+    sim = getsim(Delta,t,1e-3,1e-3)
     sim.integrator = "whfast"
     set_timestep(sim,1/50)
     set_min_distance(sim,2)
@@ -57,7 +58,7 @@ def run_megno_sim(par):
 
 
 if __name__=="__main__":
-    Ngrid = 100
+    Ngrid = 50
     par_Delta = np.linspace(-0.02,0.02,Ngrid)
     par_t = np.linspace(0.5,1,Ngrid)
     parameters = []
@@ -67,3 +68,6 @@ if __name__=="__main__":
     from rebound.interruptible_pool import InterruptiblePool
     pool = InterruptiblePool()
     results = pool.map(run_megno_sim,parameters)
+    results2d = np.array(results).reshape(Ngrid,Ngrid)
+    results2d.tofile("./stability_grids/{}_to_{}_m1e-3_grid.dat".format(res_j,res_j-res_k))
+
