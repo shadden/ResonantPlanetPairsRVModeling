@@ -16,10 +16,19 @@ do_second_order = True
 DATADIR = "./saves/"
 AllObservations = pd.read_pickle("./data/All_Observations.pkl")
 
-# Read in observations
+# Set system and (possibly) resonant configuration to fit
 I = int(sys.argv[1])
+auto_determine_acr = True
+if len(sys.argv) > 2:
+    auto_determine_acr = False
+    j_first_order = int(sys.argv[2])
+    if do_second_order:
+        j_second_order = int(sys.argv[3])
+
+# Read in observations
 system = AllObservations.system.unique()[I]
 Observations = AllObservations.query('system==@system')
+
 
 
 dname = re.sub("HD ","HD",system)
@@ -127,7 +136,11 @@ print("Initiaiting ACR fits...")
 # Determine nearest first-order resonance based on 
 period_ratio = full_model_mcmc_results['per2'] / full_model_mcmc_results['per1']
 period_ratio = period_ratio.median()
-j_first_order = np.int(np.round(1+1/(period_ratio-1)))
+if auto_determine_acr:
+    j_first_order = np.int(np.round(1+1/(period_ratio-1)))
+# override...
+if system=='HD 99706':
+    j_first_order = 3
 
 
 # Set up ACR likelihoods
@@ -168,7 +181,7 @@ for angle_n in range(j_first_order):
 
     except FileNotFoundError:
         print("No nested sampling save file found.")
-        print("Running full model nested sampling fit...")
+        print("Running ACR model nested sampling fit...")
         sampler_first_order_acr_model.run_nested()
         acr_model_nested_results = sampler_first_order_acr_model.results
         with open(filestring,"wb") as fi:
@@ -219,17 +232,18 @@ except FileNotFoundError:
 
 if do_second_order:
 
-    j_second_order = np.int(np.round(2+2/(period_ratio-1)))
-    # Check if nearest second order is a 'proper' second order resonance
-    if j_second_order%2==0:
-        jplus = j_second_order + 1
-        jminus = j_second_order - 1
-        delta_plus = np.abs( period_ratio * (jplus - 2 ) / jplus - 1 )
-        delta_minus = np.abs(period_ratio * (jminus - 2 ) / jminus - 1)
-        if delta_plus < delta_minus:
-            j_second_order = jplus
-        else:
-            j_second_order = jminus
+    if auto_determine_acr:
+        j_second_order = np.int(np.round(2+2/(period_ratio-1)))
+        # Check if nearest second order is a 'proper' second order resonance
+        if j_second_order%2==0:
+            jplus = j_second_order + 1
+            jminus = j_second_order - 1
+            delta_plus = np.abs( period_ratio * (jplus - 2 ) / jplus - 1 )
+            delta_minus = np.abs(period_ratio * (jminus - 2 ) / jminus - 1)
+            if delta_plus < delta_minus:
+                j_second_order = jplus
+            else:
+                j_second_order = jminus
 
     second_order_acr_model_like = get_acr_like(Observations,j_second_order,2)
     for key,par in second_order_acr_model_like.params.items():
@@ -262,7 +276,7 @@ if do_second_order:
     
         except FileNotFoundError:
             print("No nested sampling save file found.")
-            print("Running full model nested sampling fit...")
+            print("Running ACR model nested sampling fit...")
             sampler_second_order_acr_model.run_nested()
             acr_model_nested_results = sampler_second_order_acr_model.results
             with open(filestring,"wb") as fi:

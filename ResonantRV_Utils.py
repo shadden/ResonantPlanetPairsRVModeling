@@ -128,7 +128,7 @@ def get_full_like(observations_df):
     like.params['curv'].vary = False
     return like
 
-def synthpars_to_sim(spars,t0=0,Mstar = 1,DataInMetersPerSecond=False):
+def synthpars_to_sim(spars,t0=0,Mstar = 1,DataInKilometersPerSecond=False):
     """
     Get a rebound simulations from a set of radvel parameters in the 'synth' basis.
 
@@ -151,10 +151,10 @@ def synthpars_to_sim(spars,t0=0,Mstar = 1,DataInMetersPerSecond=False):
     -------
     rebound.Simulation object
     """
-    if DataInMetersPerSecond:
-        Kfactor = 1731*1e3
-    else:
-        Kfactor = 1731
+    # AU/day to m/s
+    Kfactor = 1731.46*1e3
+    if DataInKilometersPerSecond:
+        Kfactor /= 1e3
     sim = rb.Simulation()
     sim.units = ('day','AU','Msun')
     sim.add(m=Mstar)
@@ -167,7 +167,7 @@ def synthpars_to_sim(spars,t0=0,Mstar = 1,DataInMetersPerSecond=False):
         M = np.mod(2 * np.pi * (t0 - Tp) / P,2*np.pi)
         k = spars['k{}'.format(i)].value
         a = P**(2/3) * (sim.G * (Mstar) * (2*np.pi)**(-2))**(1/3)
-        mass = Mstar * np.sqrt(1-e*e) * (k / 1e3 / Kfactor) *  (P / 2 / np.pi / a)
+        mass = Mstar * np.sqrt(1-e*e) * (k / Kfactor) *  (P / 2 / np.pi / a)
         sim.add(m=mass,P=P,e=e,inc = np.pi / 2, omega=omega,M=M)
     sim.move_to_com()
     return sim
@@ -210,7 +210,11 @@ def plot_fit(like,ax=None,Npt = 200):
 
     x = like.x
     y = like.model(like.x)+like.residuals()
-    yerr = like.yerr
+    # Note:
+    #  like.errorbars() values include contribution of jitter terms
+    #  while like.yerr values are the raw reported uncertainties.
+    yerr = like.errorbars()
+
     for tel in set(like.telvec):
         msk = like.telvec==tel
         ax.errorbar(x[msk],y[msk],yerr=yerr[msk], fmt='o',label=tel)
