@@ -1,6 +1,6 @@
 import numpy as np
 from ResonantPairModel import ACRModel, ACRModelPrior,ACRModelPriorTransform,RadvelModelPriorTransform
-from scipy.interpolate import interp2d,RectBivariateSpline
+from scipy.interpolate import interp1d,RectBivariateSpline
 import radvel
 import pandas as pd
 import pickle
@@ -30,11 +30,23 @@ class acr_function():
             all_acr_loc_dict = pickle.load(fi)
         acr_loc_dict = all_acr_loc_dict[(res_j,res_k)]
         gammas = np.array(list(acr_loc_dict.keys()))
+        Ngamma = len(gammas)
         Nt = len(acr_loc_dict[gammas[0]][0])
         t = np.linspace(0,1,Nt)
+        alpha_res = ((res_j-res_k)/res_j)**(2/3)
+        e1_arr = np.zeros((Ngamma,Nt))
+        e2_arr = np.zeros((Ngamma,Nt))
+        for i,gamma in enumerate(gammas):
+            beta1 = 1/(1+gamma)
+            beta2 = gamma * beta1
+            raw_e1_data,raw_e2_data  = acr_loc_dict[gamma]
+            scaled_amd = beta1 * np.sqrt(alpha_res) * raw_e1_data**2 + beta2 * raw_e2_data**2
+            scaled_amd /= np.max(scaled_amd)
 
-        e1_arr = np.array([acr_loc_dict[gamma][0] for gamma in gammas])
-        e2_arr = np.array([np.abs(acr_loc_dict[gamma][1]) for gamma in gammas])
+            # re-sample eccentricities uniformly in sqrt(amd)
+            e1_arr[i] = interp1d(np.sqrt(scaled_amd) , raw_e1_data )(t)
+            e2_arr[i] = interp1d(np.sqrt(scaled_amd) , raw_e2_data )(t)
+
         
         self.e1_rbs = RectBivariateSpline(gammas,t,e1_arr)
         self.e2_rbs = RectBivariateSpline(gammas,t,e2_arr)
