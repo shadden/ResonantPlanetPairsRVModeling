@@ -1,4 +1,4 @@
-import rebound
+import rebound as rb
 import numpy as np
 import theano
 import theano.tensor as T
@@ -431,6 +431,11 @@ class ResonanceEquations():
     def alpha(self):
         return ((self.j - self.k) / self.j)**(2/3)
 
+    @property
+    def timescales(self):
+        tscales_array = self._times_scales(*self.extra_args)
+        return {name:scale for name,scale in zip(['tau_a1','tau_a2','tau_e1','tau_e2'],tscales_array)}
+
     def Rav(self,z):
         """
         Calculate the value of the averaged disturbing function
@@ -604,3 +609,23 @@ class ResonanceEquations():
         P = 0.5 * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * (I1+I2)
         amd = (P0 - P) / (s + 0.5)
         return np.array((sigma1,sigma2,I1,I2,amd))
+
+    def dyvars_to_rebound_simulation(self,z,pomega1=0,Q=0):
+        r"""
+        Convert dynamical variables
+        .. math:
+            z = (\sigma_1,\sigma_2,I_1,I_2,{\cal C}
+        to a Rebound simulation.
+        """
+        orbels = self.dyvars_to_orbels(z)
+        j,k = self.j, self.k
+        a1,e1,theta1,a2,e2,theta2 = orbels
+        pomega2 = np.mod( pomega1 +  (theta2 - theta1) / k, 2*np.pi)
+        M1 = np.mod( (theta1 - j*Q) / k ,2*np.pi )
+        M2 = np.mod( (theta2 - (j-k) * Q) / k ,2*np.pi )
+        sim = rb.Simulation()
+        sim.add(m=1)
+        sim.add(m = self.m1,a=a1,e=e1,M=M1,pomega=pomega1)
+        sim.add(m = self.m2,a=a2,e=e2,M=M2,pomega=pomega2)
+        sim.move_to_com()
+        return sim

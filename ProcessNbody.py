@@ -28,7 +28,8 @@ HostStarDictionary = {
 
 # Read in observations
 DATADIR = "./saves/"
-AllObservations = pd.read_pickle("./data/All_Observations.pkl")
+
+AllObservations = pd.read_pickle("/Users/shadden/DropboxSmithsonian/ResonantPlanetPairsRVModeling/"+"./data/All_Observations.pkl")
 I = int(sys.argv[1])
 system = AllObservations.system.unique()[I]
 Observations = AllObservations.query('system==@system')
