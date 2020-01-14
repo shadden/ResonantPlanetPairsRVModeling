@@ -224,5 +224,3 @@ def plot_fit(like,ax=None,Npt = 200):
     ax.plot(ti, like.model(ti))
     ax.set_xlabel('Time')
     ax.set_ylabel('RV')
-
-
