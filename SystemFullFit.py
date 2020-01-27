@@ -11,10 +11,10 @@ from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
 from ResonantPairModel import RadvelModelPriorTransform
 
 # Fit ACR model for second-order resonance? 
-do_second_order = True
+do_second_order = False
 
 DATADIR = "./saves/"
-AllObservations = pd.read_pickle("./data/All_Observations.pkl")
+AllObservations = pd.read_pickle("./data/New_All_Observations.pkl")
 
 # Set system and (possibly) resonant configuration to fit
 I = int(sys.argv[1])
@@ -95,17 +95,6 @@ print("Before fit: logprob: {:.2f}, loglike: {:.2f}".format(full_model_post.logp
 minresult = minimize(full_model_post.neglogprob_array,full_model_post.get_vary_params())
 print("After fit: logprob: {:.2f}, loglike: {:.2f}".format(full_model_post.logprob(),full_model_like.logprob()))
 
-# MCMC
-########
-try:
-    full_model_mcmc_results = pd.read_pickle(full_model_mcmc_posterior_file)
-    print("MCMC results read from saved file.")
-except FileNotFoundError:
-    print("No MCMC save file found.")
-    print("Running full model MCMC fit...")
-    full_model_mcmc_results = radvel.mcmc(full_model_post)
-    full_model_mcmc_results.to_pickle(full_model_mcmc_posterior_file)
-
 # Nested sampling
 try:
     with open(full_model_nested_sampling_results_file,"rb") as fi:
@@ -125,6 +114,18 @@ except FileNotFoundError:
     full_model_nested_results = full_model_nested_sampler.results
     with open(full_model_nested_sampling_results_file,"wb") as fi:
         pickle.dump(full_model_nested_results,fi)
+
+# MCMC
+########
+try:
+    full_model_mcmc_results = pd.read_pickle(full_model_mcmc_posterior_file)
+    print("MCMC results read from saved file.")
+except FileNotFoundError:
+    print("No MCMC save file found.")
+    print("Running full model MCMC fit...")
+    full_model_mcmc_results = radvel.mcmc(full_model_post)
+    full_model_mcmc_results.to_pickle(full_model_mcmc_posterior_file)
+
 
 ##########################################################
                 #####################
