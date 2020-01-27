@@ -1,4 +1,5 @@
 import rebound as rb
+import reboundx
 import numpy as np
 import theano
 import theano.tensor as T
@@ -610,7 +611,7 @@ class ResonanceEquations():
         amd = (P0 - P) / (s + 0.5)
         return np.array((sigma1,sigma2,I1,I2,amd))
 
-    def dyvars_to_rebound_simulation(self,z,pomega1=0,Q=0):
+    def dyvars_to_rebound_simulation(self,z,pomega1=0,Q=0,include_dissipation = False):
         r"""
         Convert dynamical variables
         .. math:
@@ -627,5 +628,17 @@ class ResonanceEquations():
         sim.add(m=1)
         sim.add(m = self.m1,a=a1,e=e1,M=M1,pomega=pomega1)
         sim.add(m = self.m2,a=a2,e=e2,M=M2,pomega=pomega2)
+        rebx = None
         sim.move_to_com()
-        return sim
+        if include_dissipation:
+            ps = sim.particles
+            rebx = reboundx.Extras(sim)
+            mod = rebx.load_operator("modify_orbits_direct")
+            rebx.add_operator(mod)
+            mod.params["p"] = self.p
+            timescales = self.timescales
+            ps[1].params["tau_a"]=-1*timescales['tau_a1']
+            ps[2].params["tau_a"]=-1*timescales['tau_a2']
+            ps[1].params["tau_e"]=-1*timescales['tau_e1']
+            ps[2].params["tau_e"]=-1*timescales['tau_e2']
+        return sim,rebx
