@@ -6,7 +6,7 @@ import sys
 import re
 import dynesty
 import os
-from ResonantRV_Utils import get_acr_like, get_full_like,add_telescope_jitter_priors
+from ResonantRV_Utils import get_acr_like, get_full_like,get_nbody_like,add_telescope_jitter_priors
 from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
 from ResonantPairModel import RadvelModelPriorTransform
 
@@ -39,6 +39,8 @@ if not os.path.exists(savedir):
     os.makedirs(savedir)
 
 # Set up file names for saved data
+HostStarInfoFile = "./data/HostStarInfo.pkl"
+
 full_model_mcmc_posterior_file = savedir + "full_model_mcmc_posterior.pkl"
 full_model_nested_sampling_results_file = savedir + "full_model_nested_sampling_result.pkl"
 
@@ -138,17 +140,31 @@ except FileNotFoundError:
 ##########################################################
 if do_nbody:
     print("Initializing N-body model fits...")
-    with open("../data/HostStarInfo.pkl","rb") as fi:
+    with open(HostStarInfoFile,"rb") as fi:
         HostStarData=pickle.load(fi)
-    nblike = get_nbody_like(Observations)
+    nbody_model_like = get_nbody_like(Observations)
     spars = best_pars.basis.to_synth(best_pars)
-    nblike.model.set_pars_from_synth_pars( spars)
-    for tel in set(nblike.telvec):
-        nblike.params['gamma{}'.format(tel)].value = spars['gamma{}'.format(tel)].value
-        nblike.params['jit{}'.format(tel)].value = spars['jit{}'.format(tel)].value
-    keplogprob = keplike.logprob()
-    nblogprob = nblike.logprob()
+    nbody_model_like.model.set_pars_from_synth_pars( spars)
+    for tel in set(nbody_model_like.telvec):
+        nbody_model_like.params['gamma{}'.format(tel)].value = spars['gamma{}'.format(tel)].value
+        nbody_model_like.params['jit{}'.format(tel)].value = spars['jit{}'.format(tel)].value
+    keplogprob = full_model_like.logprob()
+    nblogprob = nbody_model_like.logprob()
     print("logP: {:.2f} (Kepler) {:.2f} (Nbody)".format(keplogprob,nblogprob))
+
+    # Set up posterior object for MCMC
+    nbody_model_post = radvel.posterior.Posterior(nbody_model_like)
+    m1best = nbody_model_like.params['m1'].value
+    m2best = nbody_model_like.params['m2'].value
+    
+    # Set priors
+    nbody_model_priors = [
+        radvel.prior.Jeffreys('m1',0.2 * m1best, 5 * m1best ),
+        radvel.prior.Jeffreys('m2',0.2 * m2best, 5 * m2best ),
+        radvel.prior.EccentricityPrior(2)
+    ]
+    nbody_model_post.priors += nbody_model_priors
+    add_telescope_jitter_priors(nbody_model_post)
 
     # MCMC
     ########
