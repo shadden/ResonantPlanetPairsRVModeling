@@ -141,7 +141,7 @@ def get_full_like(observations_df):
     like.params['curv'].vary = False
     return like
 
-def get_nbody_like(observations_df,Mstar = 1.0):
+def get_nbody_like(observations_df,Mstar = 1.0, meters_per_second=True):
     """
     Get a radvel likelihood object for an N-body radial velocity model.
     
@@ -157,7 +157,11 @@ def get_nbody_like(observations_df,Mstar = 1.0):
     radvel CompositeLikelihood
     """
     # Set up radvel likelihood object
-    mdl =  NbodyModel(2,Mstar = Mstar, time_base=observations_df.time.median())
+    mdl =  NbodyModel(2,
+            Mstar = Mstar, 
+            time_base=observations_df.time.median(),
+            meters_per_second=meters_per_second
+            )
     likes=[]
     instruments = observations_df.instrument.unique()
     for i,instrument in enumerate(instruments):
