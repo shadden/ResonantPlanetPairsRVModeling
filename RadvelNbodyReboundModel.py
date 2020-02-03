@@ -89,6 +89,7 @@ class NbodyModel(radvel.GeneralRVModel):
         super(NbodyModel,self).__init__(params,_nb_rv_calc,time_base)
 
     def __call__(self,t,*args,**kwargs):
+        kwargs = {'meters_per_second':self.meters_per_second}
         return super(NbodyModel,self).__call__(t,self.time_base,*args,**kwargs)
     def get_sim(self):
         return _nb_params_to_sim(self.params,self.time_base)
@@ -103,7 +104,10 @@ class NbodyModel(radvel.GeneralRVModel):
             e = synth_pars['e{}'.format(i)].value
             w = synth_pars['w{}'.format(i)].value
             tp = synth_pars['tp{}'.format(i)].value
-            mpl = get_planet_mass_from_mstar_K_P_e(mstar,K,per,e)
+            if self.meters_per_second:
+                mpl = get_planet_mass_from_mstar_K_P_e(mstar,K,per,e)
+            else:
+                mpl = get_planet_mass_from_mstar_K_P_e(mstar,1e3 * K,per,e)
             mean_anom = np.mod( 2*np.pi * (self.time_base - tp) / per,2*np.pi)
 
             
