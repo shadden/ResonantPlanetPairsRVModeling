@@ -443,8 +443,8 @@ class NbodyModelPriorTransform():
             m='m{}'.format(i)
             self.maxdict[per] = 1.25 * like.params[per].value
             self.mindict[per] = 0.75 * like.params[per].value
-            self.maxdict[m] = 5 * like.params[k].value
-            self.mindict[m] = 0.2 * like.params[k].value
+            self.maxdict[m] = 5 * like.params[m].value
+            self.mindict[m] = 0.2 * like.params[m].value
         
         self.Npars = len(like.list_vary_params())
         self.suffixes = np.atleast_1d(like.suffixes)
