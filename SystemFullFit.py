@@ -140,7 +140,9 @@ if do_nbody:
     print("Initializing N-body model fits...")
     with open("../data/HostStarInfo.pkl","rb") as fi:
         HostStarData=pickle.load(fi)
-    nblike = get_nbody_like(Observations)
+    Mstar = HostStarData[system][0]
+    mps =  system != 'HD 45364'
+    nblike = get_nbody_like(Observations,Mstar,meters_per_second=mps)
     spars = best_pars.basis.to_synth(best_pars)
     nblike.model.set_pars_from_synth_pars( spars)
     for tel in set(nblike.telvec):
