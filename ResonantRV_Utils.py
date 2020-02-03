@@ -1,4 +1,5 @@
 import numpy as np
+from RadvelNbodyReboundModel import NbodyModel
 from ResonantPairModel import ACRModel, ACRModelPrior,ACRModelPriorTransform,RadvelModelPriorTransform
 from scipy.interpolate import interp1d,RectBivariateSpline
 import radvel
@@ -134,6 +135,38 @@ def get_full_like(observations_df):
         # neccessary to stop the code from eating shit...
         for key,par in inst_like.params.items():
             par.value = 0
+        likes.append(inst_like)
+    like = radvel.likelihood.CompositeLikelihood(likes)
+    like.params['dvdt'].vary = False
+    like.params['curv'].vary = False
+    return like
+
+def get_nbody_like(observations_df,Mstar = 1.0):
+    """
+    Get a radvel likelihood object for an N-body radial velocity model.
+    
+    Arguments
+    ---------
+    observations_df : pandas DataFrame
+        Dataframe containing the radial observations.
+        Required columns:
+            'instrument','time','velocity','uncertainty'
+
+    Returns
+    -------
+    radvel CompositeLikelihood
+    """
+    # Set up radvel likelihood object
+    mdl =  NbodyModel(2,Mstar = Mstar, time_base=observations_df.time.median())
+    likes=[]
+    instruments = observations_df.instrument.unique()
+    for i,instrument in enumerate(instruments):
+        data = observations_df.query('instrument==@instrument')[['time','velocity','uncertainty']].values
+        inst_like = radvel.likelihood.RVLikelihood(mdl,*(data.T),suffix=instrument)
+        # ... setting pars to 0 is for some reason 
+        # neccessary to stop the code from eating shit...
+        inst_like.params['gamma{}'.format(instrument)].value = np.mean(data[:,1])
+        inst_like.params['jit{}'.format(instrument)].value = np.mean(data[:,2])
         likes.append(inst_like)
     like = radvel.likelihood.CompositeLikelihood(likes)
     like.params['dvdt'].vary = False

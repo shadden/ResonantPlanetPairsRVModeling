@@ -12,6 +12,7 @@ from ResonantPairModel import RadvelModelPriorTransform
 
 # Fit ACR model for second-order resonance? 
 do_second_order = False
+do_nbody = True
 
 DATADIR = "./saves/"
 AllObservations = pd.read_pickle("./data/New_All_Observations.pkl")
@@ -40,6 +41,9 @@ if not os.path.exists(savedir):
 # Set up file names for saved data
 full_model_mcmc_posterior_file = savedir + "full_model_mcmc_posterior.pkl"
 full_model_nested_sampling_results_file = savedir + "full_model_nested_sampling_result.pkl"
+
+nbody_model_mcmc_posterior_file = savedir + "nbody_model_mcmc_posterior.pkl"
+nbody_model_nested_sampling_results_file = savedir + "nbody_model_nested_sampling_result.pkl"
 
 acr_model_mcmc_posterior_file = savedir +  "acr_model_mcmc_posterior_{}to{}_angle_n_{}.pkl"
 acr_model_nested_sampling_results_file_string = savedir +  "acr_model_nested_sampling_{}to{}_angle_n_{}.pkl"
@@ -127,6 +131,56 @@ except FileNotFoundError:
     full_model_mcmc_results.to_pickle(full_model_mcmc_posterior_file)
 
 
+##########################################################
+                #####################
+                #  Nbody model fit   #
+                #####################
+##########################################################
+if do_nbody:
+    print("Initializing N-body model fits...")
+    with open("../data/HostStarInfo.pkl","rb") as fi:
+        HostStarData=pickle.load(fi)
+    nblike = get_nbody_like(Observations)
+    spars = best_pars.basis.to_synth(best_pars)
+    nblike.model.set_pars_from_synth_pars( spars)
+    for tel in set(nblike.telvec):
+        nblike.params['gamma{}'.format(tel)].value = spars['gamma{}'.format(tel)].value
+        nblike.params['jit{}'.format(tel)].value = spars['jit{}'.format(tel)].value
+    keplogprob = keplike.logprob()
+    nblogprob = nblike.logprob()
+    print("logP: {:.2f} (Kepler) {:.2f} (Nbody)".format(keplogprob,nblogprob))
+
+    # MCMC
+    ########
+    try:
+        nbody_model_mcmc_results = pd.read_pickle(nbody_model_mcmc_posterior_file)
+        print("N-body MCMC results read from saved file.")
+    except FileNotFoundError:
+        print("No N-body MCMC save file found.")
+        print("Running N-body model MCMC fit...")
+        nbody_model_mcmc_results = radvel.mcmc(nbody_model_post)
+        nbody_model_mcmc_results.to_pickle(nbody_model_mcmc_posterior_file)
+    
+    # Nested sampling
+    try:
+        with open(nbody_model_nested_sampling_results_file,"rb") as fi:
+            nbody_model_nested_results =  pickle.load(fi)
+        print("Nested sampling results read from saved file.")
+    except FileNotFoundError:
+        print("No N-body nested sampling save file found.")
+        print("Running N-body model nested sampling fit...")
+        nbody_model_prior_transform = NbodyModelPriorTransform(Observations,nbody_model_like)
+        nbody_model_nested_sampler = dynesty.NestedSampler(
+            nbody_model_like.logprob_array,
+            nbody_model_prior_transform,
+            nbody_model_prior_transform.Npars,
+            periodic = nbody_model_prior_transform.periodic_indicies,
+            sample='rwalk'
+        )
+        nbody_model_nested_sampler.run_nested()
+        nbody_model_nested_results = nbody_model_nested_sampler.results
+        with open(nbody_model_nested_sampling_results_file,"wb") as fi:
+            pickle.dump(nbody_model_nested_results,fi)
 ##########################################################
                 #####################
                 #  ACR model fit   #

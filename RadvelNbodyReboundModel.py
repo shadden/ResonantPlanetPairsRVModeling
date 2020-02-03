@@ -38,12 +38,41 @@ def _nb_rv_calc(time,params,time_base,meters_per_second =True):
     if meters_per_second:
         vel *=1e3
     return vel
+def get_planet_mass_from_mstar_K_P_e(mstar,K,P,e):
+    """
+    Compute planet mass from input stellar mass, semi-amplitude, period and eccentricity.
 
+    Parameters
+    ----------
+    mstar : real
+        Stellar mass in solar masses.
+    K : real
+        RV semi-amplitude in m/s.
+    P : real
+        Orbital period in days.
+    e : real
+        eccentricity
+
+    Returns
+    -------
+    real
+        Planet mass in solar masses
+    """
+
+    G = 0.0002959107392494323
+    k = K / 1731456.836805555556
+    Kcubed= k*k*k
+    x = np.sqrt(1-e*e)
+    x3 = x*x*x
+    Y = x3 * P * Kcubed / (2*np.pi*G)
+    return np.real(np.roots([-1,Y,Y*2*mstar,Y*mstar**2])[0])
+     
 class NbodyModel(radvel.GeneralRVModel):
     def __init__(self,Nplanets,Mstar = 1.0, time_base=0,meters_per_second=True):
         params = radvel.Parameters(Nplanets,basis ='per tc secosw sesinw k')
         self.num_planets = params.num_planets
         self.meters_per_second = meters_per_second
+       
         for i in range(1,Nplanets+1):
             params.pop("k{}".format(i))
             params.pop("tc{}".format(i))
@@ -63,3 +92,25 @@ class NbodyModel(radvel.GeneralRVModel):
         return super(NbodyModel,self).__call__(t,self.time_base,*args,**kwargs)
     def get_sim(self):
         return _nb_params_to_sim(self.params,self.time_base)
+
+    def set_pars_from_synth_pars(self,synth_pars):
+        mstar = self.params['Mstar'].value
+
+        for i in range(1,self.num_planets+1):
+            
+            per = synth_pars['per{}'.format(i)].value
+            K = synth_pars['k{}'.format(i)].value
+            e = synth_pars['e{}'.format(i)].value
+            w = synth_pars['w{}'.format(i)].value
+            tp = synth_pars['tp{}'.format(i)].value
+            mpl = get_planet_mass_from_mstar_K_P_e(mstar,K,per,e)
+            mean_anom = np.mod( 2*np.pi * (self.time_base - tp) / per,2*np.pi)
+
+            
+            self.params['m{}'.format(i)].value = mpl
+            self.params['per{}'.format(i)].value = per
+            self.params['secosw{}'.format(i)].value = np.sqrt(e) * np.cos(w)
+            self.params['sesinw{}'.format(i)].value = np.sqrt(e) * np.sin(w)
+            self.params['M{}'.format(i)].value = mean_anom
+            
+
