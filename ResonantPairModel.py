@@ -248,7 +248,7 @@ class ACRModelPriorTransform():
 class RadvelModelPriorTransform():
     """
     A class providing a prior transformation function from 
-    the unit hyper-cube to parameters of the ACR radvel model.
+    the unit hyper-cube to parameters of a standard two-planet radvel model.
     This transformation is used by the dynesty nested sampler
     algorithms.
     
@@ -391,5 +391,156 @@ class RadvelModelPriorTransform():
 
         return np.append(
             np.array([per1,tc1,e1,w1,k1,per2,tc2,e2,w2,k2]),
+            np.vstack((gamma,jit)).T.reshape(-1)
+        )
+class NbodyModelPriorTransform():
+    """
+    A class providing a prior transformation function from 
+    the unit hyper-cube to parameters of an N-body radvel model.
+    This transformation is used by the dynesty nested sampler
+    algorithms.
+    
+    Attributes
+    ----------
+    mindict : collections.OrderedDict
+        Dictionary defining maximum bounds on model parameters.
+        Used to set bounds on model parameters 'per1', 'm1', 
+        'per2', 'm2' plus all 'jitter' and 'gamma' parameters.
+        
+    maxdict : collections.OrderedDict
+        Dictionary defining minimum bounds on model parameters.
+        Used to set bounds on model parameters 'peri', 'm1', 
+        'per2', 'm2' plus all 'jitter' and 'gamma' parameters.
+        
+    Npars : int
+        Dimension of parameter space.
+        
+    suffixes: list of str
+        Suffixes of instrument-specific jitter and gamma terms.
+     
+    """
+    def __init__(self, observations_df,like):
+        """    
+        Parameters
+        ----------
+        observations_df : pandas.core.frame.DataFrame
+            A pandas DataFrame containing RV observation data.
+            The dataframe must of 'instrument', 'uncertainty' and
+            'velocity' columns. These are used when defining
+            priors on jitter and gamma (RV offset) parameters.
+
+        like : radvel.likelihood.CompositeLikelihood
+            Radvel likelihood object.
+
+        """
+        self.maxdict=OrderedDict({col:np.inf for col in like.list_vary_params()})
+        self.mindict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
+        self.meddict=OrderedDict({col:-np.inf for col in like.list_vary_params()})
+        
+        self.periodic_indicies = [1,3,6,8]
+        for i in range(1,3):
+            per='per{}'.format(i)
+            m='m{}'.format(i)
+            self.maxdict[per] = 1.25 * like.params[per].value
+            self.mindict[per] = 0.75 * like.params[per].value
+            self.maxdict[m] = 5 * like.params[k].value
+            self.mindict[m] = 0.2 * like.params[k].value
+        
+        self.Npars = len(like.list_vary_params())
+        self.suffixes = np.atleast_1d(like.suffixes)
+        
+        for inst in self.suffixes:
+            inst_obs = observations_df.query('instrument==@inst')
+            gammastr="gamma{}".format(inst)
+            jitstr="jit{}".format(inst)
+            self.mindict[jitstr] = 1e-3 * inst_obs['uncertainty'].median()
+            self.maxdict[jitstr] = 30   * inst_obs['uncertainty'].median()
+            self.mindict[gammastr] = inst_obs['velocity'].min()
+            self.maxdict[gammastr] = inst_obs['velocity'].max()
+
+
+
+    def __call__(self,u):
+        """
+        Transformation from unit hyper-cube to parameter space
+        used by an ACR likelihood object.
+        
+        Arguments
+        ---------
+        u : array-like (Npars,)
+            Uniform variables between 0 and 1
+        Returns
+        -------
+        array-like
+            Arguments for likelihood function. Argument order is:
+                per1,tc1,e1,w1,k1,per2,tc2,e2,w2,k2,gamma_i,jit_i,...            
+        """
+        ####################
+        ### first planet ###
+        ####################
+        i=0
+        per1 = self.mindict['per1'] * (1-u[i]) + self.maxdict['per1'] * u[i]  # within range p1min to p2max
+
+        i+=1
+        M1 = np.mod(2 * np.pi * u[i], 2 * np.pi)
+
+        i+=1
+        e1 = u[i] # eccentricity from 0 to 1
+
+        i+=1
+        w1 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
+
+        i+=1
+        logm1_min = np.log(self.mindict['m1'])
+        logm1_max = np.log(self.maxdict['m1'])
+        logm1 = logm1_min * (1-u[i]) + logm1_max * u[i] # m log-uniform between mmin and mmax
+        m1 = np.exp(logm1)
+
+        #####################
+        ### second planet ###
+        #####################
+        i+=1
+        per2 = self.mindict['per2']  * (1-u[i]) + self.maxdict['per2'] * u[i] # within range p2min to p2max
+
+        i+=1
+        M2 = np.mod(2 * np.pi * u[i], 2 * np.pi)
+
+        i+=1
+        e2 = u[i] # eccentricity from 0 to 1
+
+        i+=1
+        w2 = np.mod(2 * np.pi * u[i],2*np.pi) # omega from 0 to 2pi
+
+        i+=1
+        logm2_min = np.log(self.mindict['m2'])
+        logm2_max = np.log(self.maxdict['m2'])
+        logm2 = logm2_min * (1-u[i]) + logm2_max * u[i] # K log-uniform between Kmin and Kmax
+        m2 = np.exp(logm2)
+
+        #########################
+        ### instrument params ###
+        #########################
+
+        Ninst = len(self.suffixes)
+        gamma = np.zeros(Ninst)
+        jit = np.zeros(Ninst)
+
+        for k,sfx in enumerate(self.suffixes):
+
+            i+=1
+            gamma[k] =  self.mindict['gamma{}'.format(sfx)] * (1-u[i]) + self.maxdict['gamma{}'.format(sfx)] * u[i]
+
+            i+=1
+            logjit_min = np.log(self.mindict['jit{}'.format(sfx)])
+            logjit_max = np.log(self.maxdict['jit{}'.format(sfx)])
+            logjit = logjit_min * (1-u[i]) + logjit_max * u[i]
+            jit[k] = np.exp(logjit)
+
+        secosw1 = np.sqrt(e1) * np.cos(w1)
+        sesinw1 = np.sqrt(e1) * np.sin(w1)
+        secosw2 = np.sqrt(e2) * np.cos(w2)
+        sesinw2 = np.sqrt(e2) * np.sin(w2)
+        return np.append(
+            np.array([per1,secosw1,sesinw1,per2,secosw2,sesinw2,m1,M1,m2,M2]),
             np.vstack((gamma,jit)).T.reshape(-1)
         )
