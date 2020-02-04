@@ -2,7 +2,7 @@ import numpy as np
 import radvel 
 from collections import OrderedDict
 
-def acr_forward_model(t,pars,acr_fn):
+def acr_forward_model(t,pars,acr_fn,time_base):
     vel = np.zeros(len(t))
 
     k1 = pars['k1'].value
@@ -28,9 +28,9 @@ def acr_forward_model(t,pars,acr_fn):
     P2_by_P1 = j / (j-k)
     P2 = P2_by_P1 * P1
     k2 = m2_by_m1 * P2_by_P1**(-1/3) * np.sqrt((1-e1*e1)/(1-e2*e2) ) * k1
-    M1 = 2 * np.pi * (0-tp1) / P1
+    M1 = 2 * np.pi * (time_base-tp1) / P1
     M2 = (1-k/j) * M1 + ((1-j+k+2*angle_n) / j) * np.pi
-    tp2 = -P2 * M2 / 2 / np.pi
+    tp2 = time_base - P2 * M2 / 2 / np.pi
     orbel2=np.array([P2,tp2,e2,omega2,k2])
     vel+=radvel.kepler.rv_drive(t,orbel2)
 
@@ -53,7 +53,7 @@ class ACRModel(radvel.GeneralRVModel):
         params['angle_n']=radvel.Parameter(0,vary=False)
         super(ACRModel,self).__init__(params,acr_forward_model,time_base)
     def __call__(self,t,*args,**kwargs):
-        return super(ACRModel,self).__call__(t,self._acr_curves_fn,*args,**kwargs)
+        return super(ACRModel,self).__call__(t,self._acr_curves_fn,self.time_base,*args,**kwargs)
     def get_synthparams(self):
         pars = self.params
         spars = radvel.Parameters(2,basis='per tp e w k')
@@ -80,9 +80,9 @@ class ACRModel(radvel.GeneralRVModel):
         P2 = P2_by_P1 * P1
         k1 = pars['k1'].value
         k2 = m2_by_m1 * P2_by_P1**(-1/3) * np.sqrt((1-e1*e1)/(1-e2*e2) ) * k1
-        M1 = 2 * np.pi * (0-tp1) / P1
+        M1 = 2 * np.pi * (self.time_base-tp1) / P1
         M2 = (1-k/j) * M1 + ((1-j+k+2*angle_n) / j) * np.pi
-        tp2 = -P2 * M2 / 2 / np.pi
+        tp2 = self.time_base-P2 * M2 / 2 / np.pi
 
         
         spars['e1'].value = e1
