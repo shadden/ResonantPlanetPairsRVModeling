@@ -8,7 +8,7 @@ import dynesty
 import os
 from ResonantRV_Utils import get_acr_like, get_full_like,get_nbody_like,add_telescope_jitter_priors
 from ResonantPairModel import ACRModelPrior, ACRModelPriorTransform
-from ResonantPairModel import RadvelModelPriorTransform
+from ResonantPairModel import RadvelModelPriorTransform,NbodyModelPriorTransform
 
 # Fit ACR model for second-order resonance? 
 do_second_order = False
@@ -144,7 +144,7 @@ if do_nbody:
         HostStarData=pickle.load(fi)
     Mstar = HostStarData[system][0]
     mps =  system != 'HD 45364'
-    nblike = get_nbody_like(Observations,Mstar,meters_per_second=mps)
+    nbody_model_like = get_nbody_like(Observations,Mstar,meters_per_second=mps)
     spars = best_pars.basis.to_synth(best_pars)
     nbody_model_like.model.set_pars_from_synth_pars( spars)
     for tel in set(nbody_model_like.telvec):
