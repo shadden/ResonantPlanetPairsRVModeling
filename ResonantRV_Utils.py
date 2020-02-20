@@ -273,3 +273,75 @@ def plot_fit(like,ax=None,Npt = 200):
     ax.plot(ti, like.model(ti))
     ax.set_xlabel('Time')
     ax.set_ylabel('RV')
+
+def process_acr_posterior_dataframe(acr_df,acrlike,Mstar = 1,meters_per_second = True):
+    """
+    Process a Pandas dataframe containing the posterior samples from a radvel MCMC fit with
+    an ACR model. Columns for orbital parameters and planet masses are are added to the dataframe. 
+
+    Arguments
+    ---------
+    acr_df : pandas.Dataframe
+        Dataframe containing posterior samples
+    acrlike : radvel likelihood
+        The likelihood object used to compute the ACR model posterior sample.
+    Mstar : float (optional)
+        Host star mass in solar masses.
+        Used for converting semi-amplitudes and periods to planet masses. 
+        Default value is 1
+    meters_per_second : bool (optional)
+        Whether semi-amplitude values are reported in meters per second or km/s.
+        True (default) if values are given in m/s.
+    """
+    acr_df['timebase'] = acrlike.model.time_base
+    acr_df['t'] = acr_df.stcosw**2 + acr_df.stsinw**2
+    acr_df['Mstar'] = Mstar
+    acrfn = acrlike.model._acr_curves_fn
+    # Planet 1
+    acr_df['pomega1'] = np.arctan2(acr_df.stsinw,acr_df.stcosw)
+    acr_df['e1'] = acrfn.e1_rbs(acr_df.m2_by_m1,acr_df.t,grid=False)
+    acr_df['tp1'] = timetrans_to_timeperi(acr_df.tc1,acr_df.per1,acr_df.e1,acr_df.pomega1)
+    acr_df['M1'] = 2*np.pi*(acr_df.timebase - acr_df.tp1) / acr_df.per1
+    acr_df['l1'] = np.mod(acr_df.M1 + acr_df.pomega1,2*np.pi)
+    k1 = acr_df['k1'].values
+    
+    if not meters_per_second:
+        acr_df['m1'] = np.vectorize(get_planet_mass_from_mstar_K_P_e)(
+            acr_df['Mstar'].values,
+            1e3*k1,
+            acr_df['per1'].values,
+            acr_df['e1'].values
+        )
+    else:
+        acr_df['m1'] = np.vectorize(get_planet_mass_from_mstar_K_P_e)(
+            acr_df['Mstar'].values,
+            k1,
+            acr_df['per1'].values,
+            acr_df['e1'].values
+        )
+
+    # Resonance-related variables
+    acr_df['jres'] = acrlike.params['jres'].value
+    acr_df['kres'] = acrlike.params['kres'].value
+    acr_df['angle_n'] = acrlike.params['angle_n'].value
+    # Planet 2
+    acr_df['m2'] = acr_df.m1 * acr_df.m2_by_m1
+    acr_df['e2'] = acrfn.e2_rbs(acr_df.m2_by_m1,acr_df.t,grid=False)
+    acr_df['pomega2'] = np.mod(acr_df['pomega1'] + np.pi,2*np.pi)
+    j,k = acr_df['jres'].values,acr_df['kres'].values
+    
+    acr_df['per2'] = j * acr_df.per1 / (j-k)
+    M1 = acr_df['M1']
+    angle_n = acr_df['angle_n']
+    
+    acr_df['M2'] = (1-k/j) * acr_df.M1 + ((1-j+k+2*acr_df.angle_n) / j) * np.pi    
+    acr_df['tp2'] = acr_df.timebase - acr_df.per2 * acr_df.M2 / 2 / np.pi
+    
+    for i in range(1,3):
+        rt_e = acr_df['e{}'.format(i)].apply(np.sqrt)
+        pmg = acr_df['pomega{}'.format(i)]    
+        acr_df['secosw{}'.format(i)]= rt_e * np.cos(pmg)
+        acr_df['sesinw{}'.format(i)]= rt_e * np.sin(pmg)
+
+
+

@@ -159,6 +159,115 @@ def I1I2_to_a1e1_a2e2(I1,I2,amd,gamma,j,k):
 
     return a1,e1,a2,e2
 
+def get_compiled_Hkep_Hpert_full():
+        # resonance j and k
+        j,k = T.lscalars('jk')
+        s = (j-k) / k
+
+        # Planet masses: m1,m2
+        m1,m2 = T.dscalars(2)
+        Mstar = 1
+        mu1 = m1 / (Mstar + m1)
+        mu2 = m2 / (Mstar + m2)
+        eps = m1 * mu2 / (mu1 + mu2) / Mstar
+        beta1 = mu1 / (mu1+mu2)
+        beta2 = mu2 / (mu1+mu2)
+        gamma = mu2/mu1
+        
+
+        # Dynamical variables:
+        dyvars = T.vector()
+        Q,sigma1, sigma2, I1, I2, amd = [dyvars[i] for i in range(6)]
+
+        # Set lambda2=0
+        l2 = T.constant(0.)
+        
+        l1 = k*Q 
+        w1 = (1+s) * l2 - s * l1 - sigma1
+        w2 = (1+s) * l2 - s * l1 - sigma2
+        
+        Gamma1 = I1
+        Gamma2 = I2
+        
+        # Resonant semi-major axis ratio
+        alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
+        P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
+        P = P0 - (s+1/2) * amd
+        
+        Ltot = beta1 * T.sqrt(alpha_res) + beta2 - amd
+        L1 = Ltot/2 - P - s * (I1 + I2)
+        L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+        
+        a1 = (L1 / beta1 )**2
+        e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
+        
+        a2 = (L2 / beta2 )**2
+        e2 = T.sqrt(1-(1-(Gamma2 / L2))**2)
+        
+        Hkep = -beta1 / (2 * a1) - beta2 / (2 * a2)
+        
+        alpha = a1 / a2
+        
+        ko = KeplerOp()
+        
+        M1 = l1 - w1
+        M2 = l2 - w2
+        
+        sinf1,cosf1 =  ko( M1, e1 + T.zeros_like(M1) )
+        sinf2,cosf2 =  ko( M2, e2 + T.zeros_like(M2) )
+        
+        R = calc_DisturbingFunction_with_sinf_cosf(alpha,e1,e2,w1,w2,sinf1,cosf1,sinf2,cosf2)
+        
+        Hpert = -eps * R / a2
+        
+        omega_syn = 1/a2**1.5 - 1 / a1**1.5
+        gradHpert = T.grad(Hpert,wrt=dyvars)
+        gradHkep = T.grad(Hkep,wrt=dyvars)
+        grad_omega_syn = T.grad(omega_syn,wrt=dyvars)
+
+        extra_ins = [m1,m2,j,k]
+        ins = [dyvars] + extra_ins
+
+        # Scalars
+        omega_syn_fn = theano.function(
+            inputs=ins,
+            outputs=omega_syn,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        Hpert_fn = theano.function(
+            inputs=ins,
+            outputs=Hpert,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        Hkep_fn = theano.function(
+            inputs=ins,
+            outputs=Hkep,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        # gradients
+        grad_omega_syn_fn = theano.function(
+            inputs=ins,
+            outputs=grad_omega_syn,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        gradHpert_fn = theano.function(
+            inputs=ins,
+            outputs=gradHpert,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        gradHkep_fn = theano.function(
+            inputs=ins,
+            outputs=gradHkep,
+            givens=None,
+            on_unused_input='ignore'
+        )
+        return omega_syn_fn,Hkep_fn,Hpert_fn,grad_omega_syn_fn,gradHkep_fn,gradHpert_fn
+
 def get_compiled_theano_functions(N_QUAD_PTS):
         # resonance j and k
         j,k = T.lscalars('jk')
@@ -308,6 +417,12 @@ def get_compiled_theano_functions(N_QUAD_PTS):
                 givens=givens,
                 on_unused_input='ignore'
             )
+            Hpert_av_fn = theano.function(
+                inputs=ins,
+                outputs=Hpert,
+                givens=givens,
+                on_unused_input='ignore'
+            )
             Htot_fn = theano.function(
                 inputs=ins,
                 outputs=Htot,
@@ -360,7 +475,7 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         else:
             return  [lambda x: x for _ in range(8)]
         
-        return Rav_fn,Htot_fn,H_flow_vec_fn,H_flow_jac_fn,dis_flow_vec_fn,dis_flow_jac_fn,dis_timescales_fn,orbels_fn
+        return Rav_fn,Hpert_av_fn,Htot_fn,H_flow_vec_fn,H_flow_jac_fn,dis_flow_vec_fn,dis_flow_jac_fn,dis_timescales_fn,orbels_fn
         
 
 class ResonanceEquations():
@@ -400,13 +515,20 @@ class ResonanceEquations():
         self.K2 = K2
         self.tau_alpha = tau_alpha
         self.p = p 
+        self.n_quad_pts = n_quad_pts
         funcs = get_compiled_theano_functions(n_quad_pts)
 
-        self._Rav_fn,self._H,self._H_flow,self._H_jac,self._dis_flow,self._dis_jac,self._times_scales,self._orbels_fn = funcs
+        self._Rav_fn,self._Hpert_av_fn,self._H,self._H_flow,self._H_jac,self._dis_flow,self._dis_jac,self._times_scales,self._orbels_fn = funcs
+
+        self._omega_syn_fn, self._Hkep_fn, self._Hpert_fn,\
+                self._omega_syn_grad_fn, self._Hkep_grad_fn, self._Hpert_grad_fn = get_compiled_Hkep_Hpert_full()
     
     @property
     def extra_args(self):
         return [self.m1,self.m2,self.j,self.k,self.tau_alpha,self.K1,self.K2,self.p]
+    @property
+    def Hpert_extra_args(self):
+        return [self.m1,self.m2,self.j,self.k]
 
     @property
     def mu1(self):
@@ -427,11 +549,12 @@ class ResonanceEquations():
     @property
     def beta2(self):
         return self.mu2 / (self.mu1 + self.mu2)
-    
+    @property
+    def eps(self):
+        return self.m1 * self.mu2 / (self.mu1 + self.mu2)
     @property
     def alpha(self):
         return ((self.j - self.k) / self.j)**(2/3)
-
     @property
     def timescales(self):
         tscales_array = self._times_scales(*self.extra_args)
@@ -453,6 +576,45 @@ class ResonanceEquations():
         """
         return self._Rav_fn(z,*self.extra_args)
 
+    def Hpert_osc(self,Q,z):
+        """
+        Calculate the value of the averaged disturbing function
+
+        Arguments
+        ---------
+        Q : float
+            Synodic angle
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        float : 
+            The value of the (unaveraged) perturbation Hamiltonian evaluated at (Q,z).
+        """
+        arg = np.concatenate(([Q],z))
+        Hpert_av = self._Hpert_av_fn(z,*self.extra_args)
+        return self._Hpert_fn(arg,*self.Hpert_extra_args) - Hpert_av
+
+    def gradHpert(self,Q,z):
+        """
+        Calculate the value of the averaged disturbing function
+
+        Arguments
+        ---------
+        Q : float
+            Synodic angle
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        ndarray : 
+            The gradient of the (unaveraged) perturbation Hamiltonian evaluated at (Q,z).
+        """
+        arg = np.concatenate(([Q],z))
+        return self._Hpert_grad_fn(arg,*self.Hpert_extra_args)
+
     def H(self,z):
         """
         Calculate the value of the Hamiltonian.
@@ -468,7 +630,77 @@ class ResonanceEquations():
             The value of the Hamiltonian evaluated at z.
         """
         return self._H(z,*self.extra_args)
-    
+
+    def H_kep(self,z):
+        """
+        Calculate the value of the Keplerian component of the Hamiltonian.
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        float : 
+            The value of the Keplerian part of the Hamiltonian evaluated at z.
+        """
+        Htot = self.H(z)
+        Hpert = self.H_pert(z)
+        return Htot - Hpert
+
+    def H_pert(self,z):
+        """
+        Calculate the value of the perturbation component of the Hamiltonian.
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        float : 
+            The value of the perturbation part of the Hamiltonian evaluated at z.
+        """
+        Hpert = self._Hpert_av_fn(z,*self.extra_args)
+        return Hpert
+
+    def omega_syn(self,z):
+        """
+        Calculate the synodic frequency dH0/dP.
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        float : 
+            The value of dH0/dP evaluated at z.
+        """
+
+        zfull = np.concatenate(([0],z))
+        return self._omega_syn_fn(zfull,*self.Hpert_extra_args)
+    def grad_omega_syn(self,z):
+        """
+        Calculate the gradient of the synodic frequency, grad(dH0/dP).
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+
+        Returns
+        -------
+        ndarray : 
+            The value of grad(dH0/dP) evaluated at z.
+        """
+
+        zfull = np.concatenate(([0],z))
+        return self._omega_syn_grad_fn(zfull,*self.Hpert_extra_args)
+
     def H_flow(self,z):
         """
         Calculate flow induced by the Hamiltonian
@@ -587,6 +819,7 @@ class ResonanceEquations():
         .. math:
             (a_1,e_1,\\theta_1,a_2,e_2,\\theta_2)
         """
+
         return self._orbels_fn(z,*self.extra_args)
 
     def orbels_to_dyvars(self,orbels):
@@ -611,25 +844,145 @@ class ResonanceEquations():
         amd = (P0 - P) / (s + 0.5)
         return np.array((sigma1,sigma2,I1,I2,amd))
 
-    def dyvars_to_rebound_simulation(self,z,pomega1=0,Q=0,include_dissipation = False):
+    def gradHkep(self,z):
+        zfull = np.concatenate(([0],z))
+        return self._Hkep_grad_fn(zfull,*self.Hpert_extra_args)
+
+    def mean_to_osculating_dyvars(self,Q,z,N = 256):
+        omega_syn = self.omega_syn(z)
+        OmegaMtrx = getOmegaMatrix(2)
+        Omega_del2H = self.H_flow_jac(z)[:-1,:-1]
+        vals,S = np.linalg.eig(Omega_del2H)
+        S = np.transpose([S.T[i] for i in (0,2,1,3)])
+        s1 = (S.T @ OmegaMtrx @ S)[0,2]
+        s2 = (S.T @ OmegaMtrx @ S)[1,3]
+        S.T[0]*=1/np.sqrt(s1)
+        S.T[2]*=1/np.sqrt(s1)
+        S.T[1]*=1/np.sqrt(s2)
+        S.T[3]*=1/np.sqrt(s2)
+        Sinv = np.linalg.inv(S)
+
+        Qarr = np.atleast_1d(Q)
+        dchi = np.zeros((4,len(Qarr)),dtype=complex)
+
+        # Fill arrays for FFT
+        Qs = np.linspace(0,2*np.pi,N)
+        X = np.zeros((N,4),dtype=complex)
+
+        gradHkep = self.gradHkep(z)
+        domega_syn_dz = self.grad_omega_syn(z)[1:-1]
+        domega_syn_dw = S.T @ domega_syn_dz
+
+        for i,q in enumerate(Qs):
+            gradHosc = self.gradHpert(q,z) + gradHkep
+            X[i] = S.T @ (gradHosc)[1:-1]
+            X[i] -= self.Hpert_osc(q,z) * domega_syn_dw/omega_syn
+
+        omegas = np.imag(np.diag(Sinv @ Omega_del2H @ S))[:2]
+        for I in range(2):
+            A = np.fft.fft(X[:,I])
+            freqs = np.fft.fftshift(np.fft.fftfreq(N)*N)
+            amps = np.fft.fftshift(A)/N
+            for k in range(1,N//2 - 1):
+                sig = -1j * amps[N//2+k] * np.exp(1j * freqs[N//2+k] * Qarr)  / (k*omega_syn - omegas[I])
+                sig +=-1j * amps[N//2-k] * np.exp(1j * freqs[N//2-k] * Qarr)  / (-k*omega_syn - omegas[I])
+                dchi[I] += sig
+        dchi[2] = -1j * np.conjugate(dchi[0])
+        dchi[3] = -1j * np.conjugate(dchi[1])
+
+        # Get AMD correction
+        s = (self.j - self.k) / self.k
+        dAMD = np.array([self.Hpert_osc(q,z) for q in Qarr]) / omega_syn / (s+1/2)
+        
+        # Something fishy is going on with signs!?  
+        #   Should be the case that d(sigma,I) = -1*(S @ OmegaMtrx @ dchi).T) 
+        #   but this gives the angle coordinate corrections the wrong sign...
+        dsigmaI = np.transpose(np.array([1,1,-1,-1]) * (S @ OmegaMtrx @ dchi).T)
+        result = np.transpose(z + np.vstack((dsigmaI,dAMD)).T)
+        result = np.real(result) # trim small imaginary parts cause by numerical errors
+        if result.shape[1] == 1:
+            return result.reshape(-1)
+        return result
+
+
+
+    def dyvars_to_rebound_simulation(self,z,Q=0,pomega1=0,osculating_correction = True,include_dissipation = False,**kwargs):
         r"""
         Convert dynamical variables
         .. math:
             z = (\sigma_1,\sigma_2,I_1,I_2,{\cal C}
         to a Rebound simulation.
+
+        Arguments
+        ---------
+        z : ndarray
+            Dynamical variables
+        pomega1 : float, optional
+            Planet 1's longitude of periapse. 
+            Default is 0
+        Q : float, optional
+            Synodic angle lambda2-lambda1. 
+            Default is 0
+        include_dissipation : bool, optional
+            Include dissipative effects through 
+            reboundx's external forces.
+            Default is False
+
+        Keyword Arguments
+        -----------------
+        Mstar : float
+            Default=1.0
+            Stellar mass.
+        inc : float, default = 0.0
+            Inclination of planets' orbits.
+        period1 : float
+            Default = 1.0
+            Orbital period of inner planet
+        units : tuple
+            Default = ('AU','Msun','days')
+            Units of rebound simulation.
+
+        Returns
+        -------
+        tuple :
+            Returns a tuple. The first item
+            of the tuple is a rebound simulation. 
+            The second item is a reboundx.Extras object
+            if 'include_dissipation' is True, otherwise
+            the second item is None.
         """
-        orbels = self.dyvars_to_orbels(z)
+        mean_orbels = self.dyvars_to_orbels(z)
+        a1_mean,_,_,a2_mean,_,_ = mean_orbels 
+        if osculating_correction:
+            zosc = self.mean_to_osculating_dyvars(Q,z)
+            orbels = self.dyvars_to_orbels(zosc)
+        else:
+            orbels = mean_orbels
         j,k = self.j, self.k
         a1,e1,theta1,a2,e2,theta2 = orbels
-        pomega2 = np.mod( pomega1 +  (theta2 - theta1) / k, 2*np.pi)
+        pomega2 = np.mod( pomega1 -  (theta2 - theta1) / k, 2*np.pi)
         M1 = np.mod( (theta1 - j*Q) / k ,2*np.pi )
-        M2 = np.mod( (theta2 - (j-k) * Q) / k ,2*np.pi )
+        l1 = np.mod(M1 + pomega1,2*np.pi)
+        l2 = Q + l1
+        
+        Mstar = kwargs.pop('Mstar',1.0)
+        inc = kwargs.pop('inc',0.0)
+        period1 = kwargs.pop('period1',1.0)
+        units  = kwargs.pop('units', ('AU','Msun','days'))
+
         sim = rb.Simulation()
-        sim.add(m=1)
-        sim.add(m = self.m1,a=a1,e=e1,M=M1,pomega=pomega1)
-        sim.add(m = self.m2,a=a2,e=e2,M=M2,pomega=pomega2)
-        rebx = None
+        sim.units = units
+        mpl1 = self.m1 * Mstar
+        mpl2 = self.m2 * Mstar
+        # Rescale distance scale so that the proper semi-major axis of planet 1 corresponds to orbital period 'period1'
+        a1_physical = (a1 / a1_mean) * (sim.G * (Mstar + mpl1) * period1**2 / (4*np.pi*np.pi))**(1/3)
+        a2_physical = a2 * a1_physical / a1
+        sim.add(m=Mstar)
+        sim.add(m = mpl1, a=a1_physical, e=e1, l=l1, pomega=pomega1, inc=inc, jacobi_masses=True)
+        sim.add(m = mpl2, a=a2_physical, e=e2, l=l2, pomega=pomega2, inc=inc, jacobi_masses=True)
         sim.move_to_com()
+
+        rebx = None
         if include_dissipation:
             ps = sim.particles
             rebx = reboundx.Extras(sim)

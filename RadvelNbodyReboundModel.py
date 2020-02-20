@@ -38,6 +38,32 @@ def _nb_rv_calc(time,params,time_base,meters_per_second =True):
     if meters_per_second:
         vel *=1e3
     return vel
+def get_planet_K_from_mstar_mplanet_P_e(mstar,mplanet,P,e):
+    """
+    Compute RV semi-amplitude in units [m/s] from input 
+    stellar mass, mplanet, period and eccentricity.
+
+    Parameters
+    ----------
+    mstar : real
+        Stellar mass in solar masses.
+    mplanet : real
+        Planet mass in solar masses.
+    P : real
+        Orbital period in days.
+    e : real
+        eccentricity
+
+    Returns
+    -------
+    real
+        Planet mass in solar masses
+    """
+
+    G = 0.0002959107392494323
+    
+    k = (2 * np.pi * G / P)**(1/3) * mplanet / np.sqrt(1-e*e) / (mstar + mplanet)**(2/3)
+    return 1731456.836805555556 * k
 def get_planet_mass_from_mstar_K_P_e(mstar,K,P,e):
     """
     Compute planet mass from input stellar mass, semi-amplitude, period and eccentricity.
