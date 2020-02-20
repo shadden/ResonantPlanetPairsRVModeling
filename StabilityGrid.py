@@ -6,6 +6,8 @@ from ResonantRV_Utils import acr_function
 if __name__=="__main__":
     res_j = int(sys.argv[1])
     res_k = int(sys.argv[2])
+    mass_I = int(sys.argv[3])
+    mass = np.logspace(-4,-3,6)[mass_I]
 else:
     res_j = 5
     res_k = 2 
@@ -42,7 +44,7 @@ def getsim(Delta,t,m1,m2):
 
 def run_megno_sim(par):
     Delta,t = par
-    sim = getsim(Delta,t,1e-3,1e-3)
+    sim = getsim(Delta,t,mass,mass)
     sim.integrator = "whfast"
     set_timestep(sim,1/50)
     set_min_distance(sim,2)
@@ -58,8 +60,8 @@ def run_megno_sim(par):
 
 
 if __name__=="__main__":
-    Ngrid = 50
-    par_Delta = np.linspace(-0.02,0.02,Ngrid)
+    Ngrid = 80
+    par_Delta = np.linspace(-0.04,0.04,Ngrid)
     par_t = np.linspace(0.5,1,Ngrid)
     parameters = []
     for t in par_t:
@@ -69,5 +71,4 @@ if __name__=="__main__":
     pool = InterruptiblePool()
     results = pool.map(run_megno_sim,parameters)
     results2d = np.array(results).reshape(Ngrid,Ngrid)
-    results2d.tofile("./stability_grids/{}_to_{}_m1e-3_grid.dat".format(res_j,res_j-res_k))
-
+    results2d.tofile("./stability_grids/{}_to_{}_mass_{}_grid.dat".format(res_j,res_j-res_k,mass_I))
