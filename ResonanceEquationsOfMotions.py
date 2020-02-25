@@ -143,12 +143,12 @@ def I1I2_to_a1e1_a2e2(I1,I2,amd,gamma,j,k):
 
     s = (j-k)/k
     alpha_res = ((j-k)/j)**(2/3)
-    P0 = ( beta2 - beta1 * np.sqrt(alpha_res) ) / 2
-    P = P0 - (s+1/2) * amd
+    P0 = k*( beta2 - beta1 * np.sqrt(alpha_res) ) / 2
+    P = P0 - k*(s+1/2) * amd
     
     Ltot = beta1 * np.sqrt(alpha_res) + beta2 - amd
-    L1 = Ltot/2 - P - s * (I1 + I2)
-    L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+    L1 = Ltot/2 - P/k - s * (I1 + I2)
+    L2 = Ltot/2 + P/k + (1 + s) * (I1 + I2)
 
 
     a1 = (L1 / beta1 )**2
@@ -182,7 +182,7 @@ def get_compiled_Hkep_Hpert_full():
         # Set lambda2=0
         l2 = T.constant(0.)
         
-        l1 = +1 * k * Q 
+        l1 = -1 * k * Q 
         w1 = (1+s) * l2 - s * l1 - sigma1
         w2 = (1+s) * l2 - s * l1 - sigma2
         
@@ -191,12 +191,12 @@ def get_compiled_Hkep_Hpert_full():
         
         # Resonant semi-major axis ratio
         alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
-        P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
-        P = P0 - (s+1/2) * amd
+        P0 = k * ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
+        P = P0 - k * (s+1/2) * amd
         
         Ltot = beta1 * T.sqrt(alpha_res) + beta2 - amd
-        L1 = Ltot/2 - P - s * (I1 + I2)
-        L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+        L1 = Ltot/2 - P / k - s * (I1 + I2)
+        L2 = Ltot/2 + P / k + (1 + s) * (I1 + I2)
         
         a1 = (L1 / beta1 )**2
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
@@ -297,7 +297,7 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         # Set lambda2=0
         l2 = T.constant(0.)
         
-        l1 = +1 * k * Q 
+        l1 = -1 * k * Q 
         w1 = (1+s) * l2 - s * l1 - sigma1
         w2 = (1+s) * l2 - s * l1 - sigma2
         
@@ -306,12 +306,12 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         
         # Resonant semi-major axis ratio
         alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
-        P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
-        P = P0 - (s+1/2) * amd
+        P0 =  k * ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
+        P = P0 - k * (s+1/2) * amd
         
         Ltot = beta1 * T.sqrt(alpha_res) + beta2 - amd
-        L1 = Ltot/2 - P - s * (I1 + I2)
-        L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+        L1 = Ltot/2 - P / k - s * (I1 + I2)
+        L2 = Ltot/2 + P / k + (1 + s) * (I1 + I2)
         
         a1 = (L1 / beta1 )**2
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
