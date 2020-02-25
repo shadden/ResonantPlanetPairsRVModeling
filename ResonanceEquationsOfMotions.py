@@ -182,7 +182,7 @@ def get_compiled_Hkep_Hpert_full():
         # Set lambda2=0
         l2 = T.constant(0.)
         
-        l1 = k*Q 
+        l1 = +1 * k * Q 
         w1 = (1+s) * l2 - s * l1 - sigma1
         w2 = (1+s) * l2 - s * l1 - sigma2
         
@@ -297,7 +297,7 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         # Set lambda2=0
         l2 = T.constant(0.)
         
-        l1 = k*Q 
+        l1 = +1 * k * Q 
         w1 = (1+s) * l2 - s * l1 - sigma1
         w2 = (1+s) * l2 - s * l1 - sigma2
         
