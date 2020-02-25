@@ -898,15 +898,16 @@ class ResonanceEquations():
             X[i] = S.T @ (gradHosc)[1:-1]
             X[i] -= self.Hpert_osc(q,z) * domega_syn_dw/omega_syn
     
-        omegas = np.imag(np.diag(Sinv @ Omega_del2H @ S))[:2]
+        omegas = +1*np.imag(np.diag(Sinv @ Omega_del2H @ S))[:2]
         for I in range(2):
             A = np.fft.fft(X[:,I])
             freqs = np.fft.fftshift(np.fft.fftfreq(N)*N)
             amps = np.fft.fftshift(A)/N
             for l in range(1,N//2 - 1):
-                sig = -1j * self.k * amps[N//2+l] * np.exp(1j * freqs[N//2+l] * Qarr)  / (l*omega_syn - self.k * omegas[I])
-                sig +=-1j * self.k * amps[N//2-l] * np.exp(1j * freqs[N//2-l] * Qarr)  / (-l*omega_syn - self.k * omegas[I])
+                sig = -1j * self.k * amps[N//2+l] * np.exp(1j * freqs[N//2+l] * Qarr)  / (-l*omega_syn - self.k * omegas[I])
+                sig +=-1j * self.k * amps[N//2-l] * np.exp(1j * freqs[N//2-l] * Qarr)  / (l*omega_syn - self.k * omegas[I])
                 dchi[I] += sig
+
         dchi[2] = -1j * np.conjugate(dchi[0])
         dchi[3] = -1j * np.conjugate(dchi[1])
     
@@ -914,10 +915,7 @@ class ResonanceEquations():
         s = (self.j - self.k) / self.k
         dAMD = np.array([self.Hpert_osc(q,z) for q in Qarr]) / omega_syn / (s+1/2)
     
-        # Something fishy is going on with signs!?  
-        #   Should be the case that d(sigma,I) = -1*(S @ OmegaMtrx @ dchi).T) 
-        #   but this gives the angle coordinate corrections the wrong sign...
-        dsigmaI = np.transpose(np.array([+1,+1,-1,-1]) * (S @ OmegaMtrx @ dchi).T)
+        dsigmaI = np.transpose(-1 * (S @ OmegaMtrx @ dchi).T)
         result = np.transpose(z + np.vstack((dsigmaI,dAMD)).T)
         result = np.real(result) # trim small imaginary parts cause by numerical errors
         if result.shape[1] == 1:
