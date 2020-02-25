@@ -993,7 +993,7 @@ class ResonanceEquations():
             Planet 1's longitude of periapse. 
             Default is 0
         Q : float, optional
-            Synodic angle lambda2-lambda1. 
+            Angle variable Q = (lambda2-lambda1) / k. 
             Default is 0
         include_dissipation : bool, optional
             Include dissipative effects through 
@@ -1032,10 +1032,11 @@ class ResonanceEquations():
             orbels = mean_orbels
         j,k = self.j, self.k
         a1,e1,theta1,a2,e2,theta2 = orbels
+        syn_angle = self.k * Q
         pomega2 = np.mod( pomega1 -  (theta2 - theta1) / k, 2*np.pi)
-        M1 = np.mod( (theta1 - j*Q) / k ,2*np.pi )
+        M1 = np.mod( (theta1 - j*syn_angle) / k ,2*np.pi )
         l1 = np.mod(M1 + pomega1,2*np.pi)
-        l2 = Q + l1
+        l2 = np.mod( syn_angle + l1,2*np.pi)
         
         Mstar = kwargs.pop('Mstar',1.0)
         inc = kwargs.pop('inc',0.0)
