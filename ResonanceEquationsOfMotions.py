@@ -5,6 +5,7 @@ import theano
 import theano.tensor as T
 from exoplanet.theano_ops.kepler import KeplerOp
 from warnings import warn
+from scipy.optimize import lsq_linear
 DEBUG = False
 
 def getOmegaMatrix(n):
@@ -181,7 +182,7 @@ def get_compiled_Hkep_Hpert_full():
 
         # Set lambda2=0
         l2 = T.constant(0.)
-        
+
         l1 = +1 * k * Q 
         w1 = (1+s) * l2 - s * l1 - sigma1
         w2 = (1+s) * l2 - s * l1 - sigma2
@@ -191,12 +192,12 @@ def get_compiled_Hkep_Hpert_full():
         
         # Resonant semi-major axis ratio
         alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
-        P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
-        P = P0 - (s+1/2) * amd
+        P0 = k * ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
+        P = P0 - k * (s+1/2) * amd
         
         Ltot = beta1 * T.sqrt(alpha_res) + beta2 - amd
-        L1 = Ltot/2 - P - s * (I1 + I2)
-        L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+        L1 = Ltot/2 - P/k - s * (I1 + I2)
+        L2 = Ltot/2 + P/k + (1 + s) * (I1 + I2)
         
         a1 = (L1 / beta1 )**2
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
@@ -306,12 +307,12 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         
         # Resonant semi-major axis ratio
         alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
-        P0 = ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
-        P = P0 - (s+1/2) * amd
+        P0 = k * ( beta2 - beta1 * T.sqrt(alpha_res) ) / 2
+        P = P0 - k * (s+1/2) * amd
         
         Ltot = beta1 * T.sqrt(alpha_res) + beta2 - amd
-        L1 = Ltot/2 - P - s * (I1 + I2)
-        L2 = Ltot/2 + P + (1 + s) * (I1 + I2)
+        L1 = Ltot/2 - P/k - s * (I1 + I2)
+        L2 = Ltot/2 + P/k + (1 + s) * (I1 + I2)
         
         a1 = (L1 / beta1 )**2
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
@@ -562,7 +563,7 @@ class ResonanceEquations():
 
     def Rav(self,z):
         """
-        Calculate the value of the averaged disturbing function
+        Calculate the value of the Q-averaged disturbing function
 
         Arguments
         ---------
@@ -578,7 +579,7 @@ class ResonanceEquations():
 
     def Hpert_osc(self,Q,z):
         """
-        Calculate the value of the averaged disturbing function
+        Calculate the value of the un-averaged disturbing function
 
         Arguments
         ---------
@@ -839,9 +840,9 @@ class ResonanceEquations():
         I1 = self.beta1 * np.sqrt(a1/a2) * (1 - np.sqrt(1 - e1*e1) ) 
         I2 = self.beta2 * (1 - np.sqrt(1 - e2*e2) ) 
         s = (self.j - self.k) / self.k
-        P0 = ( self.beta2 - self.beta1 * np.sqrt( self.alpha ) ) / 2
-        P = 0.5 * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * (I1+I2)
-        amd = (P0 - P) / (s + 0.5)
+        P0 = self.k * ( self.beta2 - self.beta1 * np.sqrt( self.alpha ) ) / 2
+        P = 0.5 * self.k * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * self.k *(I1+I2)
+        amd = (P0 - P) / (s + 0.5) / self.k
         return np.array((sigma1,sigma2,I1,I2,amd))
 
     def gradHkep(self,z):
@@ -849,6 +850,27 @@ class ResonanceEquations():
         return self._Hkep_grad_fn(zfull,*self.Hpert_extra_args)
 
     def mean_to_osculating_dyvars(self,Q,z,N = 256):
+        r"""
+        Apply perturbation theory to transfrom from the phase space coordiantes of the 
+        averaged model to osculating phase space coordintates of the full phase space.
+
+        Assumes that the transformation is being applied at the fixed point of the 
+        averaged model.
+
+        Arguemnts
+        ---------
+        Q : float or ndarry
+            Value(s) of angle (lambda2-lambda1)/k at which to apply transformation.
+            Equilibrium points of the averaged model correspond to orbits that are 
+            periodic in Q in the full phase space.
+        z : dynamical variables
+            Dynamical variables of the averaged model:
+                $\sigma_1,\sigma_2,I_1,I_2,AMD$
+        N : int, optional 
+            Number of Q points to evaluate functions at when performing Fourier 
+            transformation. Default is 
+                N=256
+        """
         omega_syn = self.omega_syn(z)
         OmegaMtrx = getOmegaMatrix(2)
         Omega_del2H = self.H_flow_jac(z)[:-1,:-1]
@@ -861,50 +883,104 @@ class ResonanceEquations():
         S.T[1]*=1/np.sqrt(s2)
         S.T[3]*=1/np.sqrt(s2)
         Sinv = np.linalg.inv(S)
-
-        Qarr = np.atleast_1d(Q)
+    
+        Qarr = np.atleast_1d(Q) 
         dchi = np.zeros((4,len(Qarr)),dtype=complex)
-
+    
         # Fill arrays for FFT
         Qs = np.linspace(0,2*np.pi,N)
         X = np.zeros((N,4),dtype=complex)
-
+    
         gradHkep = self.gradHkep(z)
         domega_syn_dz = self.grad_omega_syn(z)[1:-1]
         domega_syn_dw = S.T @ domega_syn_dz
-
+    
         for i,q in enumerate(Qs):
             gradHosc = self.gradHpert(q,z) + gradHkep
             X[i] = S.T @ (gradHosc)[1:-1]
             X[i] -= self.Hpert_osc(q,z) * domega_syn_dw/omega_syn
-
+    
         omegas = np.imag(np.diag(Sinv @ Omega_del2H @ S))[:2]
         for I in range(2):
             A = np.fft.fft(X[:,I])
             freqs = np.fft.fftshift(np.fft.fftfreq(N)*N)
             amps = np.fft.fftshift(A)/N
-            for k in range(1,N//2 - 1):
-                sig = -1j * amps[N//2+k] * np.exp(1j * freqs[N//2+k] * Qarr)  / (k*omega_syn - omegas[I])
-                sig +=-1j * amps[N//2-k] * np.exp(1j * freqs[N//2-k] * Qarr)  / (-k*omega_syn - omegas[I])
+            for l in range(1,N//2 - 1):
+                sig = -1j * self.k * amps[N//2+l] * np.exp(1j * freqs[N//2+l] * Qarr)  / (l*omega_syn - self.k * omegas[I])
+                sig +=-1j * self.k * amps[N//2-l] * np.exp(1j * freqs[N//2-l] * Qarr)  / (-l*omega_syn - self.k * omegas[I])
                 dchi[I] += sig
         dchi[2] = -1j * np.conjugate(dchi[0])
         dchi[3] = -1j * np.conjugate(dchi[1])
-
+    
         # Get AMD correction
         s = (self.j - self.k) / self.k
         dAMD = np.array([self.Hpert_osc(q,z) for q in Qarr]) / omega_syn / (s+1/2)
-        
+    
         # Something fishy is going on with signs!?  
         #   Should be the case that d(sigma,I) = -1*(S @ OmegaMtrx @ dchi).T) 
         #   but this gives the angle coordinate corrections the wrong sign...
-        dsigmaI = np.transpose(np.array([1,1,-1,-1]) * (S @ OmegaMtrx @ dchi).T)
+        dsigmaI = np.transpose(np.array([+1,+1,-1,-1]) * (S @ OmegaMtrx @ dchi).T)
         result = np.transpose(z + np.vstack((dsigmaI,dAMD)).T)
         result = np.real(result) # trim small imaginary parts cause by numerical errors
         if result.shape[1] == 1:
             return result.reshape(-1)
         return result
 
+    def find_conservative_equilibrium(self,guess,tolerance=1e-9,max_iter=10):
+        """
+        Use Newton's method to locate an equilibrium solution of 
+        the conservative equations of motion. 
+        
+        The AMD value of the equilibrium solution will be equal to
+        the value of the initially supplied guess of dynamical variables.
+        
+        Arguments
+        ---------
+        guess : ndarray
+            Initial guess for the dynamical variables at the equilibrium.
+        tolerance : float, optional
+            Tolerance for root-finding such that solution satisfies |f(z)| < tolerance
+            Default value is 1E-9.
+        max_iter : int, optional
+            Maximum number of Newton's method iterations.
+            Default is 10.
+        include_dissipation : bool, optional
+            Include dissipative terms in the equations of motion.
+            Default is False
 
+        Returns
+        -------
+        zeq : ndarray
+            Equilibrium value of dynamical variables.
+
+        Raises
+        ------
+        RuntimeError : Raises error if maximum number of Newton iterations is exceeded.
+        """
+        y = guess
+        lb = np.array([-np.pi,-np.pi, -1* y[2], -1 * y[3]])
+        ub = np.array([np.pi,np.pi,np.inf,np.inf])
+        fun = self.H_flow
+        jac = self.H_flow_jac
+        f = fun(y)[:-1]
+        J = jac(y)[:-1,:-1]
+        it=0
+            # Newton method iteration
+        while np.linalg.norm(f)>tolerance and it < max_iter:
+            # Note-- using constrained least-squares
+            # to avoid setting actions to negative
+            # values.
+            
+            # The lower bounds ensure that  I1 and I2 are positive quantities
+            lb[2:] =  -1* y[2:-1]
+            dy = lsq_linear(J,-f,bounds=(lb,ub)).x
+            y[:-1] = y[:-1] + dy
+            f = fun(y)[:-1]
+            J = jac(y)[:-1,:-1]
+            it+=1
+            if it==max_iter:
+                raise RuntimeError("Max iterations reached!")
+        return y
 
     def dyvars_to_rebound_simulation(self,z,Q=0,pomega1=0,osculating_correction = True,include_dissipation = False,**kwargs):
         r"""

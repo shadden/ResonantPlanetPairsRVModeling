@@ -1,9 +1,39 @@
 import radvel
 import rebound as rb
 import numpy as np
+from radvel.orbit import timeperi_to_timetrans,timetrans_to_timeperi
+
 
 _AU_PER_DAY_IN_KM_PER_SECOND=1731.456836805555556
 
+def get_planet_mass_from_mstar_K_P_e(mstar,K,P,e):
+    """
+    Compute planet mass from input stellar mass, semi-amplitude, period and eccentricity.
+
+    Parameters
+    ----------
+    mstar : real
+        Stellar mass in solar masses.
+    K : real
+        RV semi-amplitude in m/s.
+    P : real
+        Orbital period in days.
+    e : real
+        eccentricity
+
+    Returns
+    -------
+    real
+        Planet mass in solar masses
+    """
+
+    G = 0.0002959107392494323
+    k = K / 1731456.836805555556
+    Kcubed= k*k*k
+    x = np.sqrt(1-e*e)
+    x3 = x*x*x
+    Y = x3 * P * Kcubed / (2*np.pi*G)
+    return np.real(np.roots([-1,Y,Y*2*mstar,Y*mstar**2])[0])
 def _nb_params_to_sim(params,time_base):
     sim = rb.Simulation()
     sim.units=('Msun','days','AU')
@@ -64,34 +94,6 @@ def get_planet_K_from_mstar_mplanet_P_e(mstar,mplanet,P,e):
     
     k = (2 * np.pi * G / P)**(1/3) * mplanet / np.sqrt(1-e*e) / (mstar + mplanet)**(2/3)
     return 1731456.836805555556 * k
-def get_planet_mass_from_mstar_K_P_e(mstar,K,P,e):
-    """
-    Compute planet mass from input stellar mass, semi-amplitude, period and eccentricity.
-
-    Parameters
-    ----------
-    mstar : real
-        Stellar mass in solar masses.
-    K : real
-        RV semi-amplitude in m/s.
-    P : real
-        Orbital period in days.
-    e : real
-        eccentricity
-
-    Returns
-    -------
-    real
-        Planet mass in solar masses
-    """
-
-    G = 0.0002959107392494323
-    k = K / 1731456.836805555556
-    Kcubed= k*k*k
-    x = np.sqrt(1-e*e)
-    x3 = x*x*x
-    Y = x3 * P * Kcubed / (2*np.pi*G)
-    return np.real(np.roots([-1,Y,Y*2*mstar,Y*mstar**2])[0])
      
 class NbodyModel(radvel.GeneralRVModel):
     def __init__(self,Nplanets,Mstar = 1.0, time_base=0,meters_per_second=True):

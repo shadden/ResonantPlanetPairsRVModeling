@@ -8,6 +8,7 @@ import pickle
 import rebound as rb
 import matplotlib.pyplot as plt
 import os
+from radvel.orbit import timeperi_to_timetrans,timetrans_to_timeperi
 _here = os.path.dirname(os.path.abspath(__file__))
 ACR_DATA_FILE_PATH = _here +"/ACR_locations_data.pkl" 
 class acr_function():
@@ -274,6 +275,35 @@ def plot_fit(like,ax=None,Npt = 200):
     ax.set_xlabel('Time')
     ax.set_ylabel('RV')
 
+def get_planet_mass_from_mstar_K_P_e(mstar,K,P,e):
+    """
+    Compute planet mass from input stellar mass, semi-amplitude, period and eccentricity.
+
+    Parameters
+    ----------
+    mstar : real
+        Stellar mass in solar masses.
+    K : real
+        RV semi-amplitude in m/s.
+    P : real
+        Orbital period in days.
+    e : real
+        eccentricity
+
+    Returns
+    -------
+    real
+        Planet mass in solar masses
+    """
+
+    G = 0.0002959107392494323
+    k = K / 1731456.836805555556
+    Kcubed= k*k*k
+    x = np.sqrt(1-e*e)
+    x3 = x*x*x
+    Y = x3 * P * Kcubed / (2*np.pi*G)
+    return np.real(np.roots([-1,Y,Y*2*mstar,Y*mstar**2])[0])
+
 def process_acr_posterior_dataframe(acr_df,acrlike,Mstar = 1,meters_per_second = True):
     """
     Process a Pandas dataframe containing the posterior samples from a radvel MCMC fit with
@@ -343,5 +373,110 @@ def process_acr_posterior_dataframe(acr_df,acrlike,Mstar = 1,meters_per_second =
         acr_df['secosw{}'.format(i)]= rt_e * np.cos(pmg)
         acr_df['sesinw{}'.format(i)]= rt_e * np.sin(pmg)
 
+def get_planet_K_from_mstar_mplanet_P_e(mstar,mplanet,P,e):
+    """
+    Compute RV semi-amplitude in units [m/s] from input 
+    stellar mass, mplanet, period and eccentricity.
+
+    Parameters
+    ----------
+    mstar : real
+        Stellar mass in solar masses.
+    mplanet : real
+        Planet mass in solar masses.
+    P : real
+        Orbital period in days.
+    e : real
+        Orbit eccentricity
+
+    Returns
+    -------
+    K : real
+        RV semi-amplitude in m/s
+    """
+    G = 0.0002959107392494323
+    k = (2 * np.pi * G / P)**(1/3) * mplanet / np.sqrt(1-e*e) / (mstar + mplanet)**(2/3)
+    return 1731456.836805555556 * k
 
 
+from scipy.special import erf,erfc
+def rv_posterior_predictive_distribution_credible_regions(model_like,df,tmin,tmax,Ntimes=200,Nsample=1000,**kwargs):
+    r"""
+    Compute credible regions of the posterior predictive distribution of the RV
+    signal using a radvel model, a dataframe of posterior samples, and a range
+    of times.
+    
+    Arguemnts
+    ---------
+    model_like : radvel.likelihood
+        Likelihood used for the forward-modeling of the RV signal.
+    df : pandas.DataFrame
+        Dataframe containing posterior sample of 
+        parameters taken by model_like
+    tmin : float
+        Minimum time of time range for computing RV signal predictive posterior
+    tmax : float
+        Maximum time of time range for computing RV signal predictive posterior
+    Ntimes : int, optional
+        Number of times to sample between tmin and tmax.
+        Default value is 200.
+    Nsample : int, optional
+        Number of posterior samples to generate RV signals for.
+        Default value is 1000.
+
+    Other Arguments
+    ---------------
+    levels : array-like, optional
+        Credible region levels to return.
+        Default values correspond to 1,2, and 3$\sigma$
+    full_sample : bool, optional
+        Return the underlying sample of RV signals in addition to credible regions.
+        Default is False.
+
+    Returns
+    -------
+    time : ndarray (N,)
+        Time values of posterior predictive distribution values.
+    lower : ndarray (M,N)
+        Lower values bounding the credible regions given by 'levels' of the poserior
+        predictive distribution.
+        Shape is (M,N) where M is the number of credible regions and N is the number
+        of times.
+    upper : ndarray (M,N)
+        Upper values bounding the credible regions given by 'levels' of the poserior
+        predictive distribution.
+        Shape is (M,N) where M is the number of credible regions and N is the number
+        of times.
+    normalized_residual_info : ndarray (3,Nobs)
+        Information on the normalized residuals of the fit to the observations.
+        Contains the median and ±1sigma values of the normalized residuals for 
+        each observation point.
+    sample : ndarray, (N,Nsample), optional
+        If 'full_sample' is True, contains the full sample of the posterior predictive
+        distribution used to compute the credible regoins.
+    """
+    levels = kwargs.pop('levels',np.array([erf(n/np.sqrt(2)) for n in range(1,4)]))
+    full_sample = kwargs.pop('full_sample',False)
+    rv_out = np.zeros((Nsample,Ntimes))
+    Nobs = len(model_like.x)
+    normalized_resids = np.zeros((Nobs,Nsample))
+    times = np.linspace(tmin,tmax,Ntimes)
+    for k in range(Nsample):
+        rv_out[k] = np.infty
+        # Avoid unstable posterior points
+        while np.any(np.isinf(rv_out[k])):
+            i = np.random.randint(0,len(df)-1)
+            pars = df.iloc[i]
+            vpars = pars[model_like.list_vary_params()]
+            model_like.set_vary_params(vpars)
+            rv_out[k] = model_like.model(times)
+            ebs = model_like.errorbars()
+            normalized_resids[:,k] = model_like.residuals() / ebs
+    lo,hi = [],[]
+    for lvl in levels:
+        hi.append(np.quantile(rv_out.T,0.5 + lvl/2, axis=1))
+        lo.append(np.quantile(rv_out.T,0.5 - lvl/2, axis=1))
+    normalized_residual_quantiles = np.quantile(normalized_resids,(0.5,erf(1),erfc(1)),axis=1)
+    if full_sample:
+            return times,lo,hi,normalized_residual_quantiles,rv_out
+    return times,lo,hi,normalized_residual_quantiles
