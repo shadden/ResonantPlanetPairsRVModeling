@@ -861,13 +861,21 @@ class ResonanceEquations():
             Value(s) of angle (lambda2-lambda1)/k at which to apply transformation.
             Equilibrium points of the averaged model correspond to orbits that are 
             periodic in Q in the full phase space.
-        z : dynamical variables
+        z : ndarray
             Dynamical variables of the averaged model:
                 $\sigma_1,\sigma_2,I_1,I_2,AMD$
         N : int, optional 
             Number of Q points to evaluate functions at when performing Fourier 
             transformation. Default is 
                 N=256
+        Returns
+        -------
+        zosc : ndarray, (5,) or (M,5) 
+            The osculating values of the dynamical varaibles for the
+            input Q values. The dimension of the returned variables
+            is set by the dimension of the input 'Q'. If Q is a 
+            float, then z is an array of length 5. If Q is an 
+            array of length M then zosc is an (M,5) array.
         """
         omega_syn = self.omega_syn(z)
         OmegaMtrx = getOmegaMatrix(2)
@@ -922,18 +930,26 @@ class ResonanceEquations():
             return result.reshape(-1)
         return result
 
-    def find_conservative_equilibrium(self,guess,tolerance=1e-9,max_iter=10):
+    from scipy.optimize import lsq_linear
+    def find_equilibrium(self,guess,dissipation=False,tolerance=1e-9,max_iter=10):
         """
         Use Newton's method to locate an equilibrium solution of 
-        the conservative equations of motion. 
-        
-        The AMD value of the equilibrium solution will be equal to
-        the value of the initially supplied guess of dynamical variables.
-        
+        the equations of motion. 
+    
+        By default, an equilibrium of the dissipation-free equations
+        is sought. In this case, the AMD value of the equilibrium 
+        solution will be equal to the value of the initially supplied 
+        guess of dynamical variables. If dissipative terms are included
+        then the equilibrium will depend on the parameters K1 and K2
+        as well as tau_alpha.
+    
         Arguments
         ---------
         guess : ndarray
             Initial guess for the dynamical variables at the equilibrium.
+        dissipation : bool, optional
+            Whether dissipative terms are considered in the equations of
+            motion. Default is False.
         tolerance : float, optional
             Tolerance for root-finding such that solution satisfies |f(z)| < tolerance
             Default value is 1E-9.
@@ -943,16 +959,49 @@ class ResonanceEquations():
         include_dissipation : bool, optional
             Include dissipative terms in the equations of motion.
             Default is False
-
+    
         Returns
         -------
         zeq : ndarray
             Equilibrium value of dynamical variables.
-
+    
         Raises
         ------
         RuntimeError : Raises error if maximum number of Newton iterations is exceeded.
         """
+        if dissipation:
+            return self._find_dissipative_equilibrium(guess,tolerance,max_iter)
+        else:
+            return self._find_conservative_equilibrium(guess,tolerance,max_iter)
+
+    def _find_dissipative_equilibrium(self,guess,tolerance=1e-9,max_iter=10):
+        y = guess
+        lb = np.array([-np.pi,-np.pi, -1* y[2], -1 * y[3],-np.inf])
+        ub = np.array([np.pi,np.pi,np.inf,np.inf,np.inf])
+        fun = self.flow
+        jac = self.flow_jac
+        f = fun(y)
+        J = jac(y)
+        it=0
+            # Newton method iteration
+        while np.linalg.norm(f)>tolerance and it < max_iter:
+            # Note-- using constrained least-squares
+            # to avoid setting actions to negative
+            # values.
+    
+            # The lower bounds ensure that  I1 and I2 are positive quantities
+            lb[2:-1] =  -1* y[2:-1]
+            dy = lsq_linear(J,-f,bounds=(lb,ub)).x
+            y = y + dy
+            f = fun(y)
+            J = jac(y)
+            it+=1
+            if it==max_iter:
+                raise RuntimeError("Max iterations reached!")
+        return y
+
+
+    def _find_conservative_equilibrium(self,guess,tolerance=1e-9,max_iter=10):
         y = guess
         lb = np.array([-np.pi,-np.pi, -1* y[2], -1 * y[3]])
         ub = np.array([np.pi,np.pi,np.inf,np.inf])
@@ -994,7 +1043,8 @@ class ResonanceEquations():
             Default is 0
         Q : float, optional
             Angle variable Q = (lambda2-lambda1) / k. 
-            Default is 0
+            Default is Q=0. Resonant periodic orbits
+            are 2pi-periodic in Q.
         include_dissipation : bool, optional
             Include dissipative effects through 
             reboundx's external forces.
