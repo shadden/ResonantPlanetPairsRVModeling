@@ -360,7 +360,7 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         # Time derivatives of canonical variables
         I1dot_dis = L1 * e1 * e1dot_dis / ( T.sqrt(1-e1*e1) ) - I1 / tau_a1 / 2
         I2dot_dis = L2 * e2 * e2dot_dis / ( T.sqrt(1-e2*e2) ) - I2 / tau_a2 / 2
-        Pdot_dis = -1 * ( L2 / tau_a2 - L1 / tau_a1) / 4 - (s + 1/2) * (I1dot_dis + I2dot_dis)
+        Pdot_dis = -1*k * ( L2 / tau_a2 - L1 / tau_a1) / 4 - k * (s + 1/2) * (I1dot_dis + I2dot_dis)
         amddot_dis = Pdot_dis / T.grad(P,amd)
 
         #####################################################
