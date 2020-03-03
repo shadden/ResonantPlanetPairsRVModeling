@@ -1108,13 +1108,14 @@ class ResonanceEquations():
         rebx = None
         if include_dissipation:
             ps = sim.particles
+            n2 = ps[2].n
             rebx = reboundx.Extras(sim)
             mod = rebx.load_operator("modify_orbits_direct")
             rebx.add_operator(mod)
             mod.params["p"] = self.p
             timescales = self.timescales
-            ps[1].params["tau_a"]=-1*timescales['tau_a1']
-            ps[2].params["tau_a"]=-1*timescales['tau_a2']
-            ps[1].params["tau_e"]=-1*timescales['tau_e1']
-            ps[2].params["tau_e"]=-1*timescales['tau_e2']
+            ps[1].params["tau_a"]=-1*timescales['tau_a1'] / n2
+            ps[2].params["tau_a"]=-1*timescales['tau_a2'] / n2
+            ps[1].params["tau_e"]=-1*timescales['tau_e1'] / n2
+            ps[2].params["tau_e"]=-1*timescales['tau_e2'] / n2
         return sim,rebx
