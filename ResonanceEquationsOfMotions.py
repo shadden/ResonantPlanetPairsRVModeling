@@ -832,16 +832,47 @@ class ResonanceEquations():
         """
         # Total angular momentum constrained by
         # Ltot = beta1 * sqrt(alpha_res) + beta2 - amd
+        Mstar = 1
+        m1 = self.m1
+        m2 = self.m2
+        k = self.k
+        j = self.j
+        alpha_res = ((j-k)/j)**(2/3) * ((Mstar + m1) / (Mstar+m2))**(1/3)
+    
+        s = (j - k) / k
+        
+    
         a1,e1,theta1,a2,e2,theta2 = orbels
-        sigma1 = theta1 / self.k
-        sigma2 = theta2 / self.k
-        I1 = self.beta1 * np.sqrt(a1/a2) * (1 - np.sqrt(1 - e1*e1) ) 
-        I2 = self.beta2 * (1 - np.sqrt(1 - e2*e2) ) 
-        s = (self.j - self.k) / self.k
-        P0 = self.k * ( self.beta2 - self.beta1 * np.sqrt( self.alpha ) ) / 2
-        P = 0.5 * self.k * (self.beta2 - self.beta1 * np.sqrt(a1/a2)) - (s+0.5) * self.k *(I1+I2)
-        amd = (P0 - P) / (s + 0.5) / self.k
+        
+        L1 = self.beta1 * np.sqrt(a1)
+        L2 = self.beta2 * np.sqrt(a2)
+        Gamma1 = L1 * (1 - np.sqrt(1-e1**2))
+        Gamma2 = L2 * (1 - np.sqrt(1-e2**2))
+        I1 = Gamma1
+        I2 = Gamma2
+        
+        P = k * (L2-L1) / 2 - k * (s+1/2)*(I1+I2)
+        Ltot = L1 + L2 - I1 - I2
+        
+        Lcirc = self.beta1 * np.sqrt(alpha_res) + self.beta2 
+        P0 = k * (self.beta2 - self.beta1 * np.sqrt(alpha_res)) / 2
+        # Now solve for re-scaling factor 'scale' and AMD value that satisfy
+        #  scale * P = P0 - k*(s+1/2)*amd  
+        #  scale * Ltot = Lcirc - amd
+        # Solution is given by:
+        #  scale = (2 k Lcirc s-k Lcirc+2 P0)/(k Ltot-2 P+2 k Ltot s)
+        # (2 (Lcirc P-Ltot P0))/(k Ltot-2 P+2 k Ltot s)
+    
+        scale = (k * (1 + 2 * s) * Lcirc - 2 * P0) / (k * (1 + 2 * s) * Ltot - 2 * P)
+        amd = Lcirc - scale * Ltot
+        I1 *= scale
+        I2 *= scale
+        sigma1 = theta1 / k
+        sigma2 = theta2 / k
+        
         return np.array((sigma1,sigma2,I1,I2,amd))
+    
+        
 
     def gradHkep(self,z):
         zfull = np.concatenate(([0],z))
