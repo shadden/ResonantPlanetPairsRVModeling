@@ -1150,3 +1150,54 @@ class ResonanceEquations():
             ps[1].params["tau_e"]=-1*timescales['tau_e1'] / n2
             ps[2].params["tau_e"]=-1*timescales['tau_e2'] / n2
         return sim,rebx
+from scipy.integrate import odeint
+def get_res_eq_integration_results(res_eqs,y0,times,dissipation=False):
+    """
+    Convenience function to run a numerical integration of resonance 
+    equations and get results as a dictionary.
+
+    Arguments
+    ---------
+    res_eqs : ResonanceEquations object
+        Resonance equations object to use for integrations.
+    y0 : ndarray
+        Dynamical variables representing initial conditions.
+    times : ndarray
+        Times for which solution will be computed.
+    dissipation : bool, optional
+        Whether to include dissipative forces in the integration.
+        Default is false.
+    """
+    if dissipation:
+        ydot = lambda t,y: res_eqs.flow(y)
+        ydot_jac = lambda t,y: res_eqs.flow_jac(y)
+    else:
+        ydot = lambda t,y: res_eqs.H_flow(y)
+        ydot_jac = lambda t,y: res_eqs.H_flow_jac(y)
+    
+    ysoln=odeint(
+        ydot,
+        y0,
+        times,
+        Dfun=ydot_jac,
+        tfirst=True
+    )
+    
+    els = dict(
+        zip(
+            ['a1','e1','theta1','a2','e2','theta2'],
+            np.transpose([res_eqs.dyvars_to_orbels(y) for y in ysoln])
+        )
+    )
+    
+    els['time'] = times
+    els['Delta'] = ((res_eqs.j-res_eqs.k)/res_eqs.j)*(els['a2']/els['a1'])**(1.5)-1
+    
+    return {'elements':els,'solution':ysoln}
+
+
+    
+
+
+
+
