@@ -94,71 +94,6 @@ def calc_DisturbingFunction_with_sinf_cosf(alpha,e1,e2,w1,w2,sinf1,cosf1,sinf2,c
 
     return direct+indirect
 
-def cart_vars_to_a1e1s1_a2e2s2(cart_vars,gamma,j,k):
-    y1,y2,x1,x2,amd = cart_vars
-    s1 = np.arctan2(y1,x1)
-    s2 = np.arctan2(y2,x2)
-    I1 = (x1*x1 + y1*y1) / 2
-    I2 = (x2*x2 + y2*y2) / 2
-    a1,e1,a2,e2 = I1I2_to_a1e1_a2e2(I1,I2,amd,gamma,j,k)
-    return a1,e1,s1,a2,e2,s2
-
-def I1I2_to_a1e1_a2e2(I1,I2,amd,gamma,j,k):
-    """
-    Convert canonical momenta to orbital
-    elements for resonant planet pair. 
-
-    Arguments
-    ---------
-    I1 : float
-        Inner planet's momentum I=beta * sqrt(a) * (1-sqrt(1-e^2)). 
-
-    I2 : float
-        Outer planet's momentum I=beta * sqrt(a) * (1-sqrt(1-e^2)). 
-
-    amd : float
-        Quantity defining the value of planet's AMD, I1+I2, when
-        the planets are at the  location of nominal resonance,
-        a2 = [j/(j-k)]^(2/3) * a1. This quantity is conserved in 
-        the absence of dissipation.
-
-    gamma : float
-        Planet's mass ratio, gamma = m2/m1.
-
-    j : int
-        Integer that, together with k, defines the j:j-k resonance.
-
-    k : int
-        Order of the resonance.
-
-    Returns
-    -------
-    tuple of floats :
-     Returns semi-major axes and eccentricities in the order:
-        (a1,e1,a2,e2)
-    """
-    beta1 = 1/(1+gamma)
-    beta2 = 1-beta1
-    Gamma1 = I1
-    Gamma2 = I2
-
-    s = (j-k)/k
-    alpha_res = ((j-k)/j)**(2/3)
-    P0 = k*( beta2 - beta1 * np.sqrt(alpha_res) ) / 2
-    P = P0 - k*(s+1/2) * amd
-    
-    Ltot = beta1 * np.sqrt(alpha_res) + beta2 - amd
-    L1 = Ltot/2 - P/k - s * (I1 + I2)
-    L2 = Ltot/2 + P/k + (1 + s) * (I1 + I2)
-
-
-    a1 = (L1 / beta1 )**2
-    e1 = np.sqrt(1-(1-(Gamma1 / L1))**2)
-
-    a2 = (L2 / beta2 )**2
-    e2 = np.sqrt(1-(1-(Gamma2 / L2))**2)
-
-    return a1,e1,a2,e2
 
 def get_compiled_Hkep_Hpert_full():
         # resonance j and k
@@ -168,12 +103,17 @@ def get_compiled_Hkep_Hpert_full():
         # Planet masses: m1,m2
         m1,m2 = T.dscalars(2)
         Mstar = 1
-        mu1 = m1 / (Mstar + m1)
-        mu2 = m2 / (Mstar + m2)
-        eps = m1 * mu2 / (mu1 + mu2) / Mstar
-        beta1 = mu1 / (mu1+mu2)
-        beta2 = mu2 / (mu1+mu2)
-        gamma = mu2/mu1
+        eta0 = Mstar
+        eta1 = eta0+m1
+        eta2 =eta1+m2
+        mtilde1 = m1 * (eta0/eta1)
+        Mtilde1 = m0 * (eta1/eta0)
+        mtilde2 = m2 * (eta1/eta2)
+        Mtilde2 = m0 * (eta2/eta1)
+        eps = m1 * m2 / (mtilde1 + mtilde2) / Mstar
+        beta1 = mtilde1 / (mtidle1 + mtilde2)
+        beta2 = mtilde2 / (mtidle1 + mtilde2)
+        gamma = mtilde2/mtilde1
         
 
         # Dynamical variables:
@@ -198,13 +138,13 @@ def get_compiled_Hkep_Hpert_full():
         L1 = Ltot/2 - P / k - s * (I1 + I2)
         L2 = Ltot/2 + P / k + (1 + s) * (I1 + I2)
         
-        a1 = (L1 / beta1 )**2
+        a1 = (L1 / beta1 )**2 * eta0 / eta1
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
         
-        a2 = (L2 / beta2 )**2
+        a2 = (L2 / beta2 )**2 * eta1 / eta2
         e2 = T.sqrt(1-(1-(Gamma2 / L2))**2)
         
-        Hkep = -beta1 / (2 * a1) - beta2 / (2 * a2)
+        Hkep = - eta1 * beta1 / (2 * a1) / eta0  - eta2 * beta2 / (2 * a2) / eta1
         
         alpha = a1 / a2
         
@@ -220,7 +160,7 @@ def get_compiled_Hkep_Hpert_full():
         
         Hpert = -eps * R / a2
         
-        omega_syn = 1/a2**1.5 - 1 / a1**1.5
+        omega_syn = T.sqrt(eta2/eta1)/a2**1.5 - T.sqrt(eta1/eta0) / a1**1.5
         gradHpert = T.grad(Hpert,wrt=dyvars)
         gradHkep = T.grad(Hkep,wrt=dyvars)
         grad_omega_syn = T.grad(omega_syn,wrt=dyvars)
@@ -276,12 +216,17 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         # Planet masses: m1,m2
         m1,m2 = T.dscalars(2)
         Mstar = 1
-        mu1 = m1 / (Mstar + m1)
-        mu2 = m2 / (Mstar + m2)
-        eps = m1 * mu2 / (mu1 + mu2) / Mstar
-        beta1 = mu1 / (mu1+mu2)
-        beta2 = mu2 / (mu1+mu2)
-        gamma = mu2/mu1
+        eta0 = Mstar
+        eta1 = eta0+m1
+        eta2 =eta1+m2
+        mtilde1 = m1 * (eta0/eta1)
+        Mtilde1 = m0 * (eta1/eta0)
+        mtilde2 = m2 * (eta1/eta2)
+        Mtilde2 = m0 * (eta2/eta1)
+        eps = m1 * m2 / (mtilde1 + mtilde2) / Mstar
+        beta1 = mtilde1 / (mtidle1 + mtilde2)
+        beta2 = mtilde2 / (mtidle1 + mtilde2)
+        gamma = mtilde2/mtilde1
         
         # Angle variable for averaging over
         Q = T.dvector('Q')
@@ -312,13 +257,14 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         L1 = Ltot/2 - P / k - s * (I1 + I2)
         L2 = Ltot/2 + P / k + (1 + s) * (I1 + I2)
         
-        a1 = (L1 / beta1 )**2
+        
+        a1 = (L1 / beta1 )**2 * eta0 / eta1
         e1 = T.sqrt(1-(1-(Gamma1 / L1))**2)
         
-        a2 = (L2 / beta2 )**2
+        a2 = (L2 / beta2 )**2 * eta1 / eta2
         e2 = T.sqrt(1-(1-(Gamma2 / L2))**2)
         
-        Hkep = -beta1 / (2 * a1) - beta2 / (2 * a2)
+        Hkep = - eta1 * beta1 / (2 * a1) / eta0  - eta2 * beta2 / (2 * a2) / eta1
         
         alpha = a1 / a2
         
