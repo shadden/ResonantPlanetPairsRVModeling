@@ -107,12 +107,12 @@ def get_compiled_Hkep_Hpert_full():
         eta1 = eta0+m1
         eta2 =eta1+m2
         mtilde1 = m1 * (eta0/eta1)
-        Mtilde1 = m0 * (eta1/eta0)
+        Mtilde1 = Mstar * (eta1/eta0)
         mtilde2 = m2 * (eta1/eta2)
-        Mtilde2 = m0 * (eta2/eta1)
+        Mtilde2 = Mstar * (eta2/eta1)
         eps = m1 * m2 / (mtilde1 + mtilde2) / Mstar
-        beta1 = mtilde1 / (mtidle1 + mtilde2)
-        beta2 = mtilde2 / (mtidle1 + mtilde2)
+        beta1 = mtilde1 / (mtilde1 + mtilde2)
+        beta2 = mtilde2 / (mtilde1 + mtilde2)
         gamma = mtilde2/mtilde1
         
 
@@ -220,12 +220,12 @@ def get_compiled_theano_functions(N_QUAD_PTS):
         eta1 = eta0+m1
         eta2 =eta1+m2
         mtilde1 = m1 * (eta0/eta1)
-        Mtilde1 = m0 * (eta1/eta0)
+        Mtilde1 = Mstar * (eta1/eta0)
         mtilde2 = m2 * (eta1/eta2)
-        Mtilde2 = m0 * (eta2/eta1)
+        Mtilde2 = Mstar * (eta2/eta1)
         eps = m1 * m2 / (mtilde1 + mtilde2) / Mstar
-        beta1 = mtilde1 / (mtidle1 + mtilde2)
-        beta2 = mtilde2 / (mtidle1 + mtilde2)
+        beta1 = mtilde1 / (mtilde1 + mtilde2)
+        beta2 = mtilde2 / (mtilde1 + mtilde2)
         gamma = mtilde2/mtilde1
         
         # Angle variable for averaging over
