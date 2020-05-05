@@ -1,3 +1,6 @@
+data
+!data/All_Observations.pkl
+!data/HD33844/acr_5to3_ACR_fit_parameter_medians.pkl
 junk
 diss_eq_saves
 7CMa_NbodyMCMC.py
