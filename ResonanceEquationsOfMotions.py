@@ -1140,10 +1140,3 @@ def get_res_eq_integration_results(res_eqs,y0,times,dissipation=False):
     els['Delta'] = ((res_eqs.j-res_eqs.k)/res_eqs.j)*(els['a2']/els['a1'])**(1.5)-1
     
     return {'elements':els,'solution':ysoln}
-
-
-    
-
-
-
-
