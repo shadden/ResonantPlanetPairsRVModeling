@@ -1,0 +1,12 @@
+data
+junk
+diss_eq_saves
+7CMa_NbodyMCMC.py
+saves
+notebooks
+jupyter_examples/.*
+__pycache__
+MigrationGrid.py
+MigrationSims/
+PS_2020.01.15_12.46.01.csv
+
