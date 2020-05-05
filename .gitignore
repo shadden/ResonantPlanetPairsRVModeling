@@ -1,4 +1,3 @@
-data
 junk
 diss_eq_saves
 7CMa_NbodyMCMC.py
@@ -9,4 +8,11 @@ __pycache__
 MigrationGrid.py
 MigrationSims/
 PS_2020.01.15_12.46.01.csv
-
+.DS_Store
+ProcessNbody.py
+SimulatedDataFromACRConfiguration/
+SpecificStabilityGrids.py
+StabilityGrid.py
+diss_eq_saves.tar.gz
+nbody_diss_eq.py
+stability_grids/
