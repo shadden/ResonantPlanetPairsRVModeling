@@ -65,7 +65,7 @@ def _get_rebound_simarchive_integration_results(sa,coordinates):
 
         if coordinates=='Jacobi':
             orbits= sim.calculate_orbits(jacobi_masses=True)
-        elif coordinates=='heliocentric'
+        elif coordinates=='heliocentric':
             orbits = sim.calculate_orbits(primary=sim.particles[0])
         elif coordinates == 'barycentric':
             orbits = sim.calculate_orbits(primary = sim.calculate_com())
@@ -84,7 +84,7 @@ def _get_rebound_simarchive_integration_results(sa,coordinates):
             sim_results['inc'][j,i] = orbit.inc
     return sim_results
 
-def _get_reboundx_simarchive_integration_results(sa):
+def _get_reboundx_simarchive_integration_results(sa,coordinates):
     N = len(sa)
     sim0,_ = sa[0]
     Npl= sim0.N_real - 1
@@ -106,7 +106,7 @@ def _get_reboundx_simarchive_integration_results(sa):
         sim_results['time'][i] = sim.t
         if coordinates=='Jacobi':
             orbits= sim.calculate_orbits(jacobi_masses=True)
-        elif coordinates=='heliocentric'
+        elif coordinates=='heliocentric':
             orbits = sim.calculate_orbits(primary=sim.particles[0])
         elif coordinates == 'barycentric':
             orbits = sim.calculate_orbits(primary = sim.calculate_com())
